@@ -444,6 +444,27 @@ def test_start_status_stop_api_lifecycle(tmp_path):
         )
 
 
+def test_dev_status_prints_comfy_data_directories(tmp_path):
+    data_root = tmp_path / "comfy-data"
+    env = script_env(tmp_path, API_PORT=str(unused_port()), COMFY__DATA_ROOT=str(data_root))
+
+    result = subprocess.run(
+        ["./scripts/dev.sh", "status"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert "== Comfy Data ==" in result.stdout
+    assert str(data_root) in result.stdout
+    assert str(data_root / "ComfyUI-Installs") in result.stdout
+    assert str(data_root / "ComfyUI-Shared" / "models") in result.stdout
+    assert str(data_root / "ComfyUI-Cache" / "download-cache") in result.stdout
+
+
 def test_restart_without_target_defaults_to_api(tmp_path):
     if not shutil.which("curl"):
         pytest.skip("curl is required by dev.sh restart")

@@ -227,7 +227,11 @@ def command_host_probe(args: argparse.Namespace) -> int:
             "data": {
                 "data_root": str(data_paths.data_root),
                 "installs_dir": str(data_paths.installs_dir),
+                "shared_dir": str(data_paths.shared_dir),
                 "default_models_root": str(data_paths.default_models_root),
+                "default_input_root": str(data_paths.default_input_root),
+                "default_output_root": str(data_paths.default_output_root),
+                "download_cache_dir": str(data_paths.download_cache_dir),
                 "git": shutil.which("git"),
                 "uv": shutil.which("uv"),
                 "python": sys.executable,

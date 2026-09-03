@@ -103,6 +103,12 @@ def test_host_probe_creates_data_directories(tmp_path):
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["data"]["data_root"] == str(tmp_path)
+    assert payload["data"]["installs_dir"] == str(tmp_path / "ComfyUI-Installs")
+    assert payload["data"]["shared_dir"] == str(tmp_path / "ComfyUI-Shared")
+    assert payload["data"]["default_models_root"] == str(tmp_path / "ComfyUI-Shared" / "models")
+    assert payload["data"]["default_input_root"] == str(tmp_path / "ComfyUI-Shared" / "input")
+    assert payload["data"]["default_output_root"] == str(tmp_path / "ComfyUI-Shared" / "output")
+    assert payload["data"]["download_cache_dir"] == str(tmp_path / "ComfyUI-Cache" / "download-cache")
     assert (tmp_path / "ComfyUI-Installs").is_dir()
     assert (tmp_path / "ComfyUI-Shared" / "models").is_dir()
     assert (tmp_path / "ComfyUI-Cache" / "download-cache").is_dir()

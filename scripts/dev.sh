@@ -31,7 +31,7 @@ Usage:
   start api        后台启动 FastAPI API。
   stop [api]       停止后台 API；省略 api 时等价于 stop api。
   restart [api]    重启后台 API；省略 api 时等价于 restart api。
-  status           展示本地 API 进程、端口、URL、配置文件和日志路径。
+  status           展示本地 API 进程、端口、URL、配置文件、日志路径和 Comfy 数据目录。
   logs             tail API 日志。
   migrate          对当前 DATABASE__URL 执行 Alembic upgrade head。
   ports [ports...] 扫描本地端口；支持 --ports、端口范围、--json。
@@ -58,7 +58,7 @@ Usage:
   stop 会停止本脚本 PID 文件记录的 API 进程。
   start/stop/restart/status 只管理本地 API，不启动或停止 Docker PostgreSQL/Redis。
   migrate 会写入 DATABASE__URL 指向的数据库，执行前会拒绝明显非本地 URL。
-  doctor/status/ports 不修改服务状态。
+  doctor/status/ports 不修改服务状态；status 只展示 Comfy 数据目录，不创建目录。
 
 成功标准:
   start 成功 = 进程存活且 /health 在超时内可访问。
@@ -379,6 +379,16 @@ status_api() {
   else
     row "port" "free" "port=$API_PORT"
   fi
+
+  section "Comfy Data"
+  row "data_root" "path" "$COMFY_DATA_ROOT"
+  row "installs_dir" "path" "$COMFY_INSTALLS_DIR"
+  row "shared_dir" "path" "$COMFY_SHARED_DIR"
+  row "models_dir" "path" "$COMFY_MODELS_DIR"
+  row "input_dir" "path" "$COMFY_INPUT_DIR"
+  row "output_dir" "path" "$COMFY_OUTPUT_DIR"
+  row "cache_dir" "path" "$COMFY_CACHE_DIR"
+  row "download_cache" "path" "$COMFY_DOWNLOAD_CACHE_DIR"
 }
 
 logs_api() {

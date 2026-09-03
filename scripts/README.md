@@ -68,6 +68,6 @@ kubectl exec -it <api-pod> -- ./scripts/k8s.sh check
 | Path | Scope |
 |---|---|
 | `./scripts/run.sh up|status|down|restart|check dev` | Daily local development environment as one recipe: Docker PostgreSQL / Redis plus host API. |
-| `./scripts/dev.sh start|status|stop api` | Precise host API process management. |
+| `./scripts/dev.sh start|status|stop api` | Precise host API process management; `status` also prints effective Comfy data directories. |
 | `./scripts/deploy.sh up|status|down compose-deps|compose-full` | Explicit Docker dependencies or full Docker Compose API/dependencies. |
 | `./scripts/remote.sh status|logs|tunnel` | Remote GPU host inspection and SSH tunnel helper. |

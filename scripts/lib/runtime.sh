@@ -20,6 +20,28 @@ API_META_FILE="${API_META_FILE:-$RUN_DIR/api.meta}"
 API_LOG_FILE="${API_LOG_FILE:-$LOG_DIR/api.log}"
 TAIL_LINES="${TAIL_LINES:-80}"
 
+comfy_data_root() {
+  local value
+  value="${COMFY__DATA_ROOT:-$(env_value COMFY__DATA_ROOT)}"
+  if [[ -z "$value" ]]; then
+    printf "%s" "$ROOT_DIR"
+    return 0
+  fi
+  case "$value" in
+    /*) printf "%s" "$value" ;;
+    *) die "COMFY__DATA_ROOT must be empty or an absolute path: $value" 2 ;;
+  esac
+}
+
+COMFY_DATA_ROOT="$(comfy_data_root)"
+COMFY_INSTALLS_DIR="$COMFY_DATA_ROOT/ComfyUI-Installs"
+COMFY_SHARED_DIR="$COMFY_DATA_ROOT/ComfyUI-Shared"
+COMFY_MODELS_DIR="$COMFY_SHARED_DIR/models"
+COMFY_INPUT_DIR="$COMFY_SHARED_DIR/input"
+COMFY_OUTPUT_DIR="$COMFY_SHARED_DIR/output"
+COMFY_CACHE_DIR="$COMFY_DATA_ROOT/ComfyUI-Cache"
+COMFY_DOWNLOAD_CACHE_DIR="$COMFY_CACHE_DIR/download-cache"
+
 bool_enabled() {
   local name="$1"
   local value="$2"
