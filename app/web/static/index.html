@@ -135,6 +135,21 @@
         font-size: 12px;
       }
 
+      .kv {
+        display: grid;
+        gap: 6px;
+      }
+
+      .kv div {
+        display: grid;
+        gap: 6px;
+        grid-template-columns: 92px minmax(0, 1fr);
+      }
+
+      .kv span {
+        overflow-wrap: anywhere;
+      }
+
       pre {
         background: #111315;
         border-radius: 8px;
@@ -168,6 +183,10 @@
           <div id="hosts" class="list"></div>
         </section>
         <section>
+          <h2>Runtime</h2>
+          <div id="runtime" class="kv muted"></div>
+        </section>
+        <section>
           <h2>Model Roots</h2>
           <div class="stack">
             <label>Label <input id="model-label" value="Shared Models" /></label>
@@ -185,6 +204,16 @@
               <label>Name <input id="instance-name" value="Comfy Prod" /></label>
               <label>Slug <input id="instance-slug" value="comfy-prod" /></label>
               <label>Ref <input id="instance-ref" placeholder="master or tag/commit" /></label>
+              <label>Python <input id="instance-python" placeholder="3.12" /></label>
+              <label
+                >Torch
+                <select id="instance-torch">
+                  <option value="">default</option>
+                  <option value="cu124">cu124</option>
+                  <option value="requirements">requirements</option>
+                </select>
+              </label>
+              <label>GPU <input id="instance-gpu" placeholder="0" /></label>
               <label>Port <input id="instance-port" type="number" value="8188" /></label>
             </div>
             <button id="create-instance" type="button">Create Instance</button>
@@ -209,7 +238,18 @@
       </div>
     </main>
     <script>
-      const state = { hosts: [], modelRoots: [], instances: [], selectedHostId: null, selectedInstanceId: null };
+      const state = {
+        hosts: [],
+        modelRoots: [],
+        instances: [],
+        hostProbes: {},
+        selectedHostId: null,
+        selectedInstanceId: null,
+        userEditedRef: false,
+        userEditedPython: false,
+        userEditedTorch: false,
+        userEditedGpu: false,
+      };
       const apiPrefix = "__API_PREFIX__";
       const output = document.querySelector("#output");
       const modelPathInput = document.querySelector("#model-path");
@@ -226,10 +266,10 @@
         output.textContent = JSON.stringify(value, null, 2);
       }
 
-      async function request(path, options = {}) {
+      async function request(path, options = {}, display = true) {
         const response = await fetch(`${apiPrefix}${path}`, { ...options, headers: headers() });
         const body = await response.json();
-        show(body);
+        if (display) show(body);
         if (!response.ok) throw new Error(body.code || response.statusText);
         return body.data;
       }
@@ -242,6 +282,14 @@
         return state.instances.find((instance) => instance.id === state.selectedInstanceId) || null;
       }
 
+      function selectedProbe() {
+        return state.hostProbes[state.selectedHostId] || null;
+      }
+
+      function selectedRecommendation() {
+        return selectedProbe()?.runtime_recommendation || null;
+      }
+
       function defaultModelRootPath(host) {
         if (!host) return "";
         return `${host.data_root.replace(/\/+$/, "")}/ComfyUI-Shared/models`;
@@ -249,6 +297,27 @@
 
       function modelRootPathRegistered(path) {
         return state.modelRoots.some((root) => root.path === path);
+      }
+
+      function applyRuntimeRecommendation() {
+        const recommendation = selectedRecommendation();
+        if (!recommendation) return;
+        const refInput = document.querySelector("#instance-ref");
+        const pythonInput = document.querySelector("#instance-python");
+        const torchSelect = document.querySelector("#instance-torch");
+        const gpuInput = document.querySelector("#instance-gpu");
+        if (!state.userEditedRef && recommendation.comfy_ref) {
+          refInput.value = recommendation.comfy_ref;
+        }
+        if (!state.userEditedPython && recommendation.python_version) {
+          pythonInput.value = recommendation.python_version;
+        }
+        if (!state.userEditedTorch && recommendation.torch_profile) {
+          torchSelect.value = recommendation.torch_profile;
+        }
+        if (!state.userEditedGpu && Array.isArray(recommendation.gpu_ids)) {
+          gpuInput.value = recommendation.gpu_ids.join(",");
+        }
       }
 
       function syncControls() {
@@ -282,14 +351,39 @@
             state.selectedInstanceId = null;
             state.modelRoots = [];
             state.instances = [];
+            state.userEditedRef = false;
+            state.userEditedPython = false;
+            state.userEditedTorch = false;
+            state.userEditedGpu = false;
             modelPathInput.value = defaultModelRootPath(selectedHost());
             renderHosts();
+            renderRuntime();
             renderModelRoots();
             renderInstances();
             await loadHostResources(state.selectedHostId);
           });
         });
         syncControls();
+      }
+
+      function renderRuntime() {
+        const host = selectedHost();
+        const probe = selectedProbe();
+        const recommendation = selectedRecommendation();
+        const gpus = probe?.gpus || [];
+        const gpuIds = Array.isArray(recommendation?.gpu_ids) ? recommendation.gpu_ids.join(",") : "";
+        const warnings = Array.isArray(recommendation?.warnings) ? recommendation.warnings.join("; ") : "";
+        document.querySelector("#runtime").innerHTML = host
+          ? [
+              `<div><strong>Data Root</strong><span>${host.data_root}</span></div>`,
+              `<div><strong>Driver</strong><span>${probe?.driver_version || "unknown"}</span></div>`,
+              `<div><strong>CUDA</strong><span>${probe?.cuda_version || "unknown"}</span></div>`,
+              `<div><strong>GPU</strong><span>${gpus.map((gpu) => `${gpu.index}: ${gpu.name}`).join(", ") || "none"}</span></div>`,
+              `<div><strong>Recommend</strong><span>${recommendation ? `${recommendation.comfy_ref} / ${recommendation.python_version} / ${recommendation.torch_profile} / gpu ${gpuIds || "none"}` : "pending"}</span></div>`,
+              `<div><strong>Warning</strong><span>${warnings || "none"}</span></div>`,
+              `<div><strong>Error</strong><span>${probe?.nvidia_smi_error || "none"}</span></div>`,
+            ].join("")
+          : "";
       }
 
       function renderModelRoots() {
@@ -324,11 +418,17 @@
         if (!hostId) {
           state.modelRoots = [];
           state.instances = [];
+          renderRuntime();
           renderModelRoots();
           renderInstances();
           return;
         }
         const hostParam = encodeURIComponent(hostId);
+        const probe = await request(`/hosts/${hostParam}/probe`, { method: "POST", body: JSON.stringify({}) });
+        if (state.selectedHostId !== hostId) return;
+        state.hostProbes[hostId] = probe.data;
+        applyRuntimeRecommendation();
+        renderRuntime();
         const roots = await request(`/model-roots?host_id=${hostParam}`);
         if (state.selectedHostId !== hostId) return;
         state.modelRoots = roots.model_roots;
@@ -345,14 +445,31 @@
         if (!selectedHost()) {
           state.selectedHostId = state.hosts[0]?.id || null;
           state.selectedInstanceId = null;
+          state.userEditedRef = false;
+          state.userEditedPython = false;
+          state.userEditedTorch = false;
+          state.userEditedGpu = false;
         }
         modelPathInput.value = defaultModelRootPath(selectedHost());
         renderHosts();
+        renderRuntime();
         await loadHostResources(state.selectedHostId);
       }
 
       document.querySelector("#refresh").addEventListener("click", refresh);
       modelPathInput.addEventListener("input", syncControls);
+      document.querySelector("#instance-ref").addEventListener("input", () => {
+        state.userEditedRef = true;
+      });
+      document.querySelector("#instance-python").addEventListener("input", () => {
+        state.userEditedPython = true;
+      });
+      document.querySelector("#instance-torch").addEventListener("change", () => {
+        state.userEditedTorch = true;
+      });
+      document.querySelector("#instance-gpu").addEventListener("input", () => {
+        state.userEditedGpu = true;
+      });
       document.querySelector("#create-model-root").addEventListener("click", async () => {
         if (!selectedHost()) {
           show({ code: "HOST_NOT_SELECTED", message: "Select a host first." });
@@ -380,7 +497,14 @@
             name: document.querySelector("#instance-name").value,
             instance_slug: document.querySelector("#instance-slug").value,
             comfy_ref: document.querySelector("#instance-ref").value || null,
+            python_version: document.querySelector("#instance-python").value || null,
+            torch_profile: document.querySelector("#instance-torch").value || null,
             comfy_port: Number(document.querySelector("#instance-port").value),
+            gpu_ids: document
+              .querySelector("#instance-gpu")
+              .value.split(",")
+              .map((item) => item.trim())
+              .filter(Boolean),
             model_root_ids: state.modelRoots.map((item) => item.id),
           }),
         });

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import Field, field_validator
 
+from app.core.config.sections import SUPPORTED_TORCH_PROFILES
 from app.schemas.common import StrictBaseModel
 
 ConnectionMode = Literal["local", "ssh"]
@@ -105,8 +106,9 @@ class InstanceCreateRequest(StrictBaseModel):
     @field_validator("torch_profile")
     @classmethod
     def validate_torch_profile(cls, value: str | None) -> str | None:
-        if value is not None and value != "requirements":
-            raise ValueError("P1 only supports torch_profile=requirements")
+        if value is not None and value not in SUPPORTED_TORCH_PROFILES:
+            supported = ", ".join(sorted(SUPPORTED_TORCH_PROFILES))
+            raise ValueError(f"torch_profile must be one of: {supported}")
         return value
 
 

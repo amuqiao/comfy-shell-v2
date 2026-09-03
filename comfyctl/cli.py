@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -23,6 +24,19 @@ EXIT_USAGE = 2
 EXIT_PRECONDITION = 3
 EXIT_EXTERNAL = 4
 EXIT_RUNTIME = 5
+
+TORCH_REQUIREMENT_NAMES = frozenset({"torch", "torchvision", "torchaudio"})
+TORCH_PROFILE_BACKENDS = {"cu124": "cu124"}
+TORCH_PROFILE_PACKAGES = {
+    "cu124": {
+        "torch": "torch==2.6.0+cu124",
+        "torchvision": "torchvision==0.21.0+cu124",
+        "torchaudio": "torchaudio==2.6.0+cu124",
+    }
+}
+SUPPORTED_CUDA_TORCH_PROFILES = frozenset(TORCH_PROFILE_BACKENDS)
+DEFAULT_RECOMMENDED_PYTHON = "3.12"
+DEFAULT_CU124_COMFY_REF = "8b099de36acd81acd1afa3b5442951dc847e0a52"
 
 
 @dataclass(frozen=True)
@@ -79,6 +93,136 @@ def require_tool(name: str, *, layer: str = "python") -> str:
     if path is None:
         raise CommandFailure(EXIT_EXTERNAL, "DEPENDENCY_MISSING", f"missing executable: {name}", layer)
     return path
+
+
+def version_parts(value: str | None) -> tuple[int, ...]:
+    if value is None:
+        return ()
+    return tuple(int(part) for part in re.findall(r"\d+", value))
+
+
+def version_at_least(value: str | None, minimum: str) -> bool:
+    parts = version_parts(value)
+    minimum_parts = version_parts(minimum)
+    if not parts or not minimum_parts:
+        return False
+    length = max(len(parts), len(minimum_parts))
+    padded = parts + (0,) * (length - len(parts))
+    minimum_padded = minimum_parts + (0,) * (length - len(minimum_parts))
+    return padded >= minimum_padded
+
+
+def parse_nvidia_smi_cuda_version(value: str) -> str | None:
+    match = re.search(r"CUDA Version:\s*([0-9]+(?:\.[0-9]+)?)", value)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def runtime_recommendation(*, cuda_version: str | None, gpus: list[dict[str, str]]) -> dict[str, Any]:
+    warnings: list[str] = []
+    if gpus and version_at_least(cuda_version, "12.4"):
+        return {
+            "comfy_ref": DEFAULT_CU124_COMFY_REF,
+            "python_version": DEFAULT_RECOMMENDED_PYTHON,
+            "torch_profile": "cu124",
+            "gpu_ids": [gpus[0]["index"]],
+            "reason": f"Detected NVIDIA CUDA {cuda_version}; use the verified cu124 runtime and compatible ComfyUI ref.",
+            "warnings": warnings,
+        }
+    if gpus:
+        warnings.append("No supported CUDA torch profile matches this host; add a dedicated profile before GPU install.")
+        return {
+            "comfy_ref": "master",
+            "python_version": DEFAULT_RECOMMENDED_PYTHON,
+            "torch_profile": "requirements",
+            "gpu_ids": [gpus[0]["index"]],
+            "reason": f"Detected NVIDIA GPU but CUDA version is {cuda_version or 'unknown'}.",
+            "warnings": warnings,
+        }
+    return {
+        "comfy_ref": "master",
+        "python_version": DEFAULT_RECOMMENDED_PYTHON,
+        "torch_profile": "requirements",
+        "gpu_ids": [],
+        "reason": "No NVIDIA GPU was detected.",
+        "warnings": warnings,
+    }
+
+
+def normalized_package_name(value: str) -> str:
+    return re.sub(r"[-_.]+", "-", value).lower()
+
+
+def requirement_package_name(line: str) -> str | None:
+    stripped = line.split("#", 1)[0].strip()
+    if not stripped or stripped.startswith(("-", "http://", "https://", ".")):
+        return None
+    match = re.match(r"([A-Za-z0-9_.-]+)", stripped)
+    if match is None:
+        return None
+    return normalized_package_name(match.group(1))
+
+
+def is_torch_requirement(line: str) -> bool:
+    name = requirement_package_name(line)
+    return name in TORCH_REQUIREMENT_NAMES
+
+
+def write_requirements_without_torch(source: Path, target: Path) -> None:
+    lines = [line for line in source.read_text(encoding="utf-8").splitlines() if not is_torch_requirement(line)]
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def torch_requirements(source: Path, *, torch_profile: str | None = None) -> list[str]:
+    lines = [line.split("#", 1)[0].strip() for line in source.read_text(encoding="utf-8").splitlines()]
+    requirements = [line for line in lines if line and is_torch_requirement(line)]
+    if torch_profile is None:
+        if requirements:
+            return requirements
+        return ["torch", "torchvision", "torchaudio"]
+    profile_packages = TORCH_PROFILE_PACKAGES[torch_profile]
+    return [profile_packages[name] for name in ("torch", "torchvision", "torchaudio")]
+
+
+def installed_torch_versions(python: Path) -> dict[str, str | None]:
+    script = (
+        "import json\n"
+        "import torch\n"
+        "import torchvision\n"
+        "import torchaudio\n"
+        "print(json.dumps({"
+        "'torch': torch.__version__, "
+        "'torch_cuda': torch.version.cuda, "
+        "'torchvision': torchvision.__version__, "
+        "'torchaudio': torchaudio.__version__"
+        "}, sort_keys=True))\n"
+    )
+    result = run_command([str(python), "-c", script])
+    if result.returncode != 0:
+        raise CommandFailure(
+            EXIT_EXTERNAL,
+            "PYTHON_DEPENDENCY_FAILED",
+            "torch import check failed after install",
+            "python",
+            stderr_tail=stderr_tail(result.stderr),
+        )
+    try:
+        value = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise CommandFailure(
+            EXIT_EXTERNAL,
+            "PYTHON_DEPENDENCY_FAILED",
+            "torch import check returned invalid JSON",
+            "python",
+            stderr_tail=stderr_tail(result.stdout + result.stderr),
+        ) from exc
+    return {
+        "torch": value.get("torch"),
+        "torch_cuda": value.get("torch_cuda"),
+        "torchvision": value.get("torchvision"),
+        "torchaudio": value.get("torchaudio"),
+    }
 
 
 def read_pid(pid_file: Path) -> int | None:
@@ -158,15 +302,18 @@ def process_owned_by_instance(pid: int, paths) -> bool:
     return cwd == checkout and has_main
 
 
-def resolve_ref(repo_url: str, ref: str) -> str | None:
-    require_tool("git", layer="git")
-    result = run_command(["git", "ls-remote", repo_url, ref])
-    if result.returncode != 0:
-        raise CommandFailure(EXIT_EXTERNAL, "GIT_FAILED", "git ls-remote failed", "git", stderr_tail=stderr_tail(result.stderr))
-    first = result.stdout.splitlines()[0] if result.stdout.splitlines() else ""
-    if first:
-        return first.split()[0]
-    return None
+def checkout_commit(checkout_dir: Path, *, log_path: Path) -> str:
+    result = run_command(["git", "rev-parse", "HEAD"], cwd=checkout_dir)
+    if result.returncode != 0 or not result.stdout.strip():
+        raise CommandFailure(
+            EXIT_EXTERNAL,
+            "GIT_FAILED",
+            "git rev-parse HEAD failed",
+            "git",
+            log_path=str(log_path),
+            stderr_tail=stderr_tail(result.stderr),
+        )
+    return result.stdout.strip()
 
 
 def write_manifest(path: Path, payload: dict[str, Any]) -> None:
@@ -174,7 +321,9 @@ def write_manifest(path: Path, payload: dict[str, Any]) -> None:
 
 
 def clone_checkout(*, repo: str, ref: str, checkout_dir: Path, log_path: Path) -> None:
-    clone = run_command(["git", "clone", "--depth", "1", "--branch", ref, repo, str(checkout_dir)])
+    clone = run_command(
+        ["git", "clone", "--depth", "1", "--single-branch", "--filter=blob:none", "--branch", ref, repo, str(checkout_dir)]
+    )
     if clone.returncode == 0:
         return
     shutil.rmtree(checkout_dir, ignore_errors=True)
@@ -210,17 +359,46 @@ def promote_install(paths, *, staging_checkout: Path, staging_venv: Path) -> Non
     shutil.move(str(staging_venv), str(paths.venv))
 
 
+def inspect_nvidia_smi(nvidia_smi: str | None) -> dict[str, Any]:
+    if nvidia_smi is None:
+        return {"nvidia_smi": None, "cuda_version": None, "driver_version": None, "gpus": [], "error": None}
+
+    gpus: list[dict[str, str]] = []
+    driver_versions: set[str] = set()
+    gpu_result = run_command(
+        [nvidia_smi, "--query-gpu=index,name,memory.total,driver_version", "--format=csv,noheader,nounits"]
+    )
+    error: str | None = None
+    if gpu_result.returncode == 0:
+        for line in gpu_result.stdout.splitlines():
+            cells = [cell.strip() for cell in line.split(",")]
+            if len(cells) >= 4:
+                driver_versions.add(cells[3])
+                gpus.append({"index": cells[0], "name": cells[1], "memory_total_mb": cells[2], "driver_version": cells[3]})
+    else:
+        error = stderr_tail(gpu_result.stderr)
+
+    summary_result = run_command([nvidia_smi])
+    cuda_version = parse_nvidia_smi_cuda_version(summary_result.stdout) if summary_result.returncode == 0 else None
+    if summary_result.returncode != 0:
+        error = stderr_tail(summary_result.stderr)
+    elif cuda_version is None:
+        error = "nvidia-smi output did not include a parseable CUDA Version"
+
+    return {
+        "nvidia_smi": nvidia_smi,
+        "cuda_version": cuda_version,
+        "driver_version": next(iter(driver_versions)) if len(driver_versions) == 1 else None,
+        "gpus": gpus,
+        "error": error,
+    }
+
+
 def command_host_probe(args: argparse.Namespace) -> int:
     data_paths = ensure_data_dirs(args.data_root)
-    gpus: list[dict[str, str]] = []
     nvidia_smi = shutil.which("nvidia-smi")
-    if nvidia_smi is not None:
-        gpu_result = run_command([nvidia_smi, "--query-gpu=index,name,memory.total", "--format=csv,noheader"])
-        if gpu_result.returncode == 0:
-            for line in gpu_result.stdout.splitlines():
-                cells = [cell.strip() for cell in line.split(",")]
-                if len(cells) >= 3:
-                    gpus.append({"index": cells[0], "name": cells[1], "memory_total": cells[2]})
+    gpu_info = inspect_nvidia_smi(nvidia_smi)
+    recommendation = runtime_recommendation(cuda_version=gpu_info["cuda_version"], gpus=gpu_info["gpus"])
     return success(
         {
             "layer": "host",
@@ -235,8 +413,12 @@ def command_host_probe(args: argparse.Namespace) -> int:
                 "git": shutil.which("git"),
                 "uv": shutil.which("uv"),
                 "python": sys.executable,
-                "nvidia_smi": nvidia_smi,
-                "gpus": gpus,
+                "nvidia_smi": gpu_info["nvidia_smi"],
+                "nvidia_smi_error": gpu_info["error"],
+                "driver_version": gpu_info["driver_version"],
+                "cuda_version": gpu_info["cuda_version"],
+                "gpus": gpu_info["gpus"],
+                "runtime_recommendation": recommendation,
             },
         }
     )
@@ -255,20 +437,21 @@ def command_instance_install(args: argparse.Namespace) -> int:
     paths = ensure_instance_dirs(args.data_root, args.slug)
     require_tool("git", layer="git")
     require_tool("uv", layer="python")
-    if args.torch_profile != "requirements":
-        raise CommandFailure(EXIT_USAGE, "REQUEST_INVALID", "P1 only supports torch_profile=requirements", "config")
+    if args.torch_profile not in {"requirements", *sorted(SUPPORTED_CUDA_TORCH_PROFILES)}:
+        supported = ", ".join(["requirements", *sorted(SUPPORTED_CUDA_TORCH_PROFILES)])
+        raise CommandFailure(EXIT_USAGE, "REQUEST_INVALID", f"torch_profile must be one of: {supported}", "config")
 
     if paths.lock.exists():
         raise CommandFailure(EXIT_PRECONDITION, "INSTANCE_LOCKED", f"instance lock exists: {paths.lock}", "filesystem")
     paths.lock.write_text(str(os.getpid()), encoding="utf-8")
     staging_root: Path | None = None
     try:
-        resolved_commit = resolve_ref(args.repo, args.ref) or args.ref
         staging_root = paths.staging_dir / unique_name("install")
         staging_checkout = staging_root / "ComfyUI"
         staging_venv = staging_root / ".venv"
         staging_root.mkdir(parents=True, exist_ok=False)
         clone_checkout(repo=args.repo, ref=args.ref, checkout_dir=staging_checkout, log_path=paths.log_file)
+        resolved_commit = checkout_commit(staging_checkout, log_path=paths.log_file)
         venv = run_command(["uv", "venv", "--python", args.python, str(staging_venv)])
         if venv.returncode != 0:
             raise CommandFailure(
@@ -280,9 +463,38 @@ def command_instance_install(args: argparse.Namespace) -> int:
                 stderr_tail=stderr_tail(venv.stderr),
             )
         requirements = staging_checkout / "requirements.txt"
+        torch_versions: dict[str, str | None] | None = None
         if requirements.exists():
             venv_python = staging_venv / "bin" / "python"
-            install = run_command(["uv", "pip", "install", "--python", str(venv_python), "-r", str(requirements)])
+            if args.torch_profile == "requirements":
+                install_requirements = requirements
+            else:
+                torch_backend = TORCH_PROFILE_BACKENDS[args.torch_profile]
+                torch_packages = torch_requirements(requirements, torch_profile=args.torch_profile)
+                torch_install = run_command(
+                    [
+                        "uv",
+                        "pip",
+                        "install",
+                        "--python",
+                        str(venv_python),
+                        "--torch-backend",
+                        torch_backend,
+                        *torch_packages,
+                    ]
+                )
+                if torch_install.returncode != 0:
+                    raise CommandFailure(
+                        EXIT_EXTERNAL,
+                        "PYTHON_DEPENDENCY_FAILED",
+                        f"uv pip install torch_profile={args.torch_profile} failed",
+                        "python",
+                        log_path=str(paths.log_file),
+                        stderr_tail=stderr_tail(torch_install.stderr),
+                    )
+                install_requirements = staging_checkout / "requirements-without-torch.txt"
+                write_requirements_without_torch(requirements, install_requirements)
+            install = run_command(["uv", "pip", "install", "--python", str(venv_python), "-r", str(install_requirements)])
             if install.returncode != 0:
                 raise CommandFailure(
                     EXIT_EXTERNAL,
@@ -292,6 +504,7 @@ def command_instance_install(args: argparse.Namespace) -> int:
                     log_path=str(paths.log_file),
                     stderr_tail=stderr_tail(install.stderr),
                 )
+            torch_versions = installed_torch_versions(venv_python)
         promote_install(paths, staging_checkout=staging_checkout, staging_venv=staging_venv)
         write_manifest(
             paths.manifest,
@@ -302,6 +515,7 @@ def command_instance_install(args: argparse.Namespace) -> int:
                 "resolved_commit": resolved_commit,
                 "python_version": args.python,
                 "torch_profile": args.torch_profile,
+                "torch_versions": torch_versions,
                 "created_at": utc_now(),
             },
         )
@@ -322,10 +536,10 @@ def command_instance_install(args: argparse.Namespace) -> int:
 
 
 def write_extra_model_paths(path: Path, model_roots: list[str]) -> None:
-    lines = ["comfy_shell:", "  base_path: /", "  checkpoints: []", "  vae: []", "  loras: []"]
+    lines = ["comfy_shell:", "  base_path: /", "  checkpoints: ''"]
     if model_roots:
-        lines = ["comfy_shell:", "  base_path: /", "  checkpoints:"]
-        lines.extend(f"    - {model_root}" for model_root in model_roots)
+        lines = ["comfy_shell:", "  base_path: /", "  checkpoints: |"]
+        lines.extend(f"    {model_root}" for model_root in model_roots)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

@@ -92,6 +92,40 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
 }
 ```
 
+`POST /v1/hosts/{host_id}/probe` 返回运行时探测结果。调用方可以用
+`runtime_recommendation` 预填新实例参数；创建实例时显式传入的
+`python_version`、`torch_profile`、`gpu_ids` 仍然优先。
+
+```json
+{
+  "ok": true,
+  "layer": "host",
+  "data": {
+    "data_root": "/data/wangqiao",
+    "installs_dir": "/data/wangqiao/ComfyUI-Installs",
+    "default_models_root": "/data/wangqiao/ComfyUI-Shared/models",
+    "driver_version": "550.127.08",
+    "cuda_version": "12.4",
+    "gpus": [
+      {
+        "index": "0",
+        "name": "NVIDIA A10",
+        "memory_total_mb": "23028",
+        "driver_version": "550.127.08"
+      }
+    ],
+    "runtime_recommendation": {
+      "comfy_ref": "8b099de36acd81acd1afa3b5442951dc847e0a52",
+      "python_version": "3.12",
+      "torch_profile": "cu124",
+      "gpu_ids": ["0"],
+      "reason": "Detected NVIDIA CUDA 12.4; use the verified cu124 runtime and compatible ComfyUI ref.",
+      "warnings": []
+    }
+  }
+}
+```
+
 `POST /v1/instances`:
 
 ```json
@@ -101,13 +135,20 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
   "instance_slug": "comfy-prod",
   "comfy_ref": "v0.3.50",
   "python_version": "3.12",
-  "torch_profile": "requirements",
+  "torch_profile": "cu124",
   "comfy_port": 8188,
   "gpu_ids": ["0"],
   "model_root_ids": ["uuid"],
   "primary_model_root_id": "uuid"
 }
 ```
+
+`torch_profile` 当前支持 `requirements` 和 `cu124`。`requirements` 完全跟随 ComfyUI 的 requirements；`cu124`
+会先使用 `uv pip install --torch-backend cu124` 安装已固定的 CUDA 12.4 版本组：
+`torch==2.6.0+cu124`、`torchvision==0.21.0+cu124`、`torchaudio==2.6.0+cu124`，再安装过滤掉这三个包的
+ComfyUI requirements。这样 torch 生态绑定已验证的 CUDA 12.4 wheel，普通 Python 依赖仍然可以走环境里的默认 PyPI 源或镜像。
+对 NVIDIA A10 / Driver 550 / CUDA 12.4 这类主机，probe 当前推荐的兼容 ComfyUI ref 是
+`8b099de36acd81acd1afa3b5442951dc847e0a52`；当前 ComfyUI `master` 已知可能要求更新的 torch 生态，不应作为这类主机的默认 happy path。
 
 `POST /v1/instances/{instance_id}/install` and `POST /v1/instances/{instance_id}/reinstall`:
 

@@ -234,6 +234,13 @@ def test_ui_injects_configured_api_prefix():
     assert "/data/comfy-shell-v2/ComfyUI-Shared/models" not in response.text
     assert "function defaultModelRootPath(host)" in response.text
     assert "/ComfyUI-Shared/models" in response.text
+    assert 'id="instance-torch"' in response.text
+    assert 'id="instance-gpu"' in response.text
+    assert 'value="cu124"' in response.text
+    assert "runtime_recommendation" in response.text
+    assert "/hosts/${hostParam}/probe" in response.text
+    assert "nvidia_smi_error" in response.text
+    assert "gpu_ids" in response.text
 
 
 def test_access_log_exposes_stable_fields(test_settings):

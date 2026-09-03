@@ -16,6 +16,12 @@ def test_settings_are_sectioned_and_load_defaults():
     assert settings.storage.backend == "disabled"
 
 
+def test_settings_accept_cu124_torch_profile():
+    settings = AppSettings(comfy={"torch_profile": "cu124"})
+
+    assert settings.comfy.torch_profile == "cu124"
+
+
 def test_release_rejects_placeholder_secret():
     with pytest.raises(ValidationError, match="SECURITY__SERVICE_API_KEY"):
         AppSettings(runtime={"app_env": "prd"}, storage={"backend": "disabled"})

@@ -88,6 +88,8 @@ Comfy Shell P1 产品 API 已经实现：
 
 `hosts`、`model_roots`、`instances`、`instance_model_roots` 和 `command_runs` 是当前控制面表。`install_root` 不是用户输入字段，由 `Host.data_root` 和 `Instance.instance_slug` 派生为 `data_root/ComfyUI-Installs/<instance_slug>`。
 
+`POST /v1/hosts/{host_id}/probe` 调用 `comfyctl host probe`，会创建并返回 data root 下的标准目录，探测 `git`、`uv`、当前 Python、`nvidia-smi`、NVIDIA driver、CUDA runtime 上限和 GPU 列表。probe 同时返回 `runtime_recommendation`，用于 UI 预填新实例的 `comfy_ref`、`python_version`、`torch_profile` 和 `gpu_ids`；它不会修改已创建实例。当前推荐规则很窄：探测到 NVIDIA GPU 且 CUDA 版本不低于 12.4 时推荐 `comfy_ref=8b099de36acd81acd1afa3b5442951dc847e0a52`、`python_version=3.12`、`torch_profile=cu124` 和第一张 GPU；否则推荐 `comfy_ref=master`、`python_version=3.12`、`torch_profile=requirements`，并在 GPU 存在但没有匹配 profile 时返回 warning。远端实测结论是：NVIDIA A10 / Driver 550 / CUDA 12.4 可以运行该兼容 ref、Python 3.12 和 torch 2.6.0+cu124；当前 ComfyUI master 搭配 torch 2.6.0+cu124 会在 `comfy-kitchen==0.2.31` 初始化阶段失败。
+
 `status`、`ready` 和 `logs` 是只读诊断接口，不写入 `CommandRun`。`install`、`reinstall`、`start`、`stop` 会创建 `CommandRun`，保存 exit code、错误码、日志路径和 stderr tail。
 
 旧 `items` 示例代码仍保留在仓库中作为隔离的模板示例和 repository/service 测试对象，但不再由 `app.main.create_app()` 挂载为产品 API。
@@ -136,6 +138,10 @@ Comfy Shell P1 产品 API 已经实现：
 - `comfyctl instance logs --id <id> --slug <slug> --data-root <path> --tail <n>`
 
 `comfyctl` 不接受任意 `install_root`。它只接受 `--data-root` 和 `--slug`，再由 `comfyctl.paths` 派生安装目录、共享目录和缓存目录。
+`host probe` 会输出 `driver_version`、`cuda_version`、`gpus`、`nvidia_smi_error` 和 `runtime_recommendation`。推荐结果只是调用方创建实例时的输入建议；`install` 和 `reinstall` 只使用实例记录中已经保存的 `comfy_ref`、`python_version` 和 `torch_profile`。
+`--torch-profile` 当前支持 `requirements` 和 `cu124`；`cu124` 会先使用 `uv pip install --torch-backend cu124`
+安装已固定的 CUDA 12.4 版本组：`torch==2.6.0+cu124`、`torchvision==0.21.0+cu124`、`torchaudio==2.6.0+cu124`，再安装过滤掉这三个包的 ComfyUI requirements。普通 Python
+依赖继续使用环境中的默认 PyPI 源或镜像，避免把所有包都压到 PyTorch wheel index 上。
 
 ## Scripts And Verification
 

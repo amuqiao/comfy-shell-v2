@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
+SUPPORTED_TORCH_PROFILES = frozenset({"requirements", "cu124"})
+
 
 class ConfigSection(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -152,8 +154,9 @@ class ComfySettings(ConfigSection):
     @field_validator("torch_profile")
     @classmethod
     def validate_torch_profile(cls, value: str) -> str:
-        if value != "requirements":
-            raise ValueError("P1 only supports COMFY__TORCH_PROFILE=requirements")
+        if value not in SUPPORTED_TORCH_PROFILES:
+            supported = ", ".join(sorted(SUPPORTED_TORCH_PROFILES))
+            raise ValueError(f"COMFY__TORCH_PROFILE must be one of: {supported}")
         return value
 
     @field_validator("bind_host")

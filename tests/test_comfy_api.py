@@ -31,6 +31,16 @@ def test_comfy_single_host_flow(sqlite_app):
         model_root = model_roots.json()["data"]["model_roots"][0]
         assert model_root["path"].endswith("/ComfyUI-Shared/models")
 
+        probe = client.post(f"/v1/hosts/{host['id']}/probe", json={}, headers=auth_headers())
+        assert probe.status_code == 200
+        probe_data = probe.json()["data"]["data"]
+        assert "driver_version" in probe_data
+        assert "cuda_version" in probe_data
+        assert "gpus" in probe_data
+        assert "comfy_ref" in probe_data["runtime_recommendation"]
+        assert probe_data["runtime_recommendation"]["python_version"] == "3.12"
+        assert probe_data["runtime_recommendation"]["torch_profile"] in {"requirements", "cu124"}
+
         created = client.post(
             "/v1/instances",
             json={
@@ -38,6 +48,8 @@ def test_comfy_single_host_flow(sqlite_app):
                 "name": "Comfy Prod",
                 "instance_slug": "comfy-prod",
                 "comfy_ref": "master",
+                "python_version": "3.12",
+                "torch_profile": "cu124",
                 "comfy_port": 8188,
                 "model_root_ids": [model_root["id"]],
             },
@@ -46,6 +58,8 @@ def test_comfy_single_host_flow(sqlite_app):
         assert created.status_code == 201
         instance = created.json()["data"]
         assert instance["install_root"].endswith("/ComfyUI-Installs/comfy-prod")
+        assert instance["python_version"] == "3.12"
+        assert instance["torch_profile"] == "cu124"
         assert instance["model_root_ids"] == [model_root["id"]]
 
         fetched = client.get(f"/v1/instances/{instance['id']}", headers=auth_headers())

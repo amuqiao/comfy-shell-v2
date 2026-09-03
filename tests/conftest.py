@@ -10,13 +10,14 @@ import app.models  # noqa: F401
 
 
 @pytest.fixture
-def test_settings() -> AppSettings:
+def test_settings(tmp_path) -> AppSettings:
     return AppSettings(
         runtime={"app_env": "local"},
         security={"service_api_key": "test-service-key", "disable_auth": False},
         database={"url": "sqlite+aiosqlite:///:memory:"},
         storage={"backend": "disabled"},
         observability={"access_log_enabled": False},
+        comfy={"data_root": str(tmp_path / "comfy-data"), "torch_profile": "requirements"},
     )
 
 
