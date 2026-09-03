@@ -51,6 +51,12 @@ LAUNCHER_ENV_KEYS = frozenset(
         "COMPOSE_PROJECT_NAME",
         "POSTGRES_DB",
         "POSTGRES_HOST_PORT",
+        "REMOTE_DIR",
+        "REMOTE_HOST",
+        "REMOTE_LOG_TAIL",
+        "REMOTE_TUNNEL_LOCAL_PORT",
+        "REMOTE_TUNNEL_REMOTE_HOST",
+        "REMOTE_TUNNEL_REMOTE_PORT",
         "REDIS_HOST_PORT",
     }
 )

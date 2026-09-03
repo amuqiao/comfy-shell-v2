@@ -37,7 +37,7 @@ cp .env.example .env
 From macOS:
 
 ```bash
-ssh -L 7800:127.0.0.1:7800 user@gpu-host
+./scripts/remote.sh tunnel --host user@gpu-host --local-port 7800 --remote-port 7800
 ```
 
 Open:
@@ -84,6 +84,11 @@ Model roots are outside instance installs. Reinstalling an instance replaces tha
 ./scripts/remote.sh logs --host user@gpu-host --dir /data/wangqiao/comfy-shell-v2
 ./scripts/remote.sh tunnel --host user@gpu-host --local-port 7800 --remote-port 7800
 ```
+
+`remote.sh` also reads `REMOTE_HOST`, `REMOTE_DIR`, `REMOTE_LOG_TAIL`, `REMOTE_TUNNEL_LOCAL_PORT`,
+`REMOTE_TUNNEL_REMOTE_HOST`, and `REMOTE_TUNNEL_REMOTE_PORT` from `.env`, `ENV_FILE`, exported environment,
+or `--profile FILE`. CLI options override environment and profile values. It does not guess remote hostnames;
+use the IP address or SSH alias that macOS can actually resolve.
 
 `scripts/dev.sh` manages only the FastAPI control plane. ComfyUI instance lifecycle is managed through the Web API and `comfyctl`.
 

@@ -28,6 +28,11 @@ def unused_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o755)
+
+
 def wait_for_tcp_port(port: int, timeout: float = 5.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -98,6 +103,21 @@ exit {deploy_exit}
     deploy.chmod(0o755)
 
     return root, log_file
+
+
+def fake_ssh_env(tmp_path: Path, **overrides: str) -> tuple[dict[str, str], Path]:
+    bin_dir = tmp_path / "bin"
+    argv_file = tmp_path / "ssh-argv.txt"
+    bin_dir.mkdir()
+    write_executable(
+        bin_dir / "ssh",
+        """#!/usr/bin/env sh
+printf '%s\n' "$@" > "$SSH_ARGV_FILE"
+exit 0
+""",
+    )
+    env = script_env(tmp_path, PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}", SSH_ARGV_FILE=str(argv_file), **overrides)
+    return env, argv_file
 
 
 def test_script_help_commands_work():
@@ -630,6 +650,238 @@ def test_deploy_modes_smoke():
     assert "compose-full" in result.stdout
     assert "local" not in result.stdout
     assert "dev" not in result.stdout
+
+
+def test_remote_tunnel_reads_profile_without_connecting(tmp_path):
+    profile = tmp_path / "remote.env"
+    profile.write_text(
+        "\n".join(
+            [
+                "REMOTE_HOST=wangqiao@47.94.108.140",
+                "REMOTE_TUNNEL_LOCAL_PORT=17800",
+                "REMOTE_TUNNEL_REMOTE_HOST=127.0.0.1",
+                "REMOTE_TUNNEL_REMOTE_PORT=7800",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_script("./scripts/remote.sh", "tunnel", "--profile", str(profile), "--dry-run")
+
+    assert result.returncode == 0
+    assert "http://127.0.0.1:17800/ui/" in result.stdout
+    assert "127.0.0.1:17800 -> 127.0.0.1:7800 via wangqiao@47.94.108.140" in result.stdout
+    assert "ssh" in result.stdout
+    assert "17800:127.0.0.1:7800" in result.stdout
+
+
+def test_remote_tunnel_calls_ssh_with_required_options(tmp_path):
+    profile = tmp_path / "remote.env"
+    profile.write_text(
+        "\n".join(
+            [
+                "REMOTE_HOST=wangqiao@47.94.108.140",
+                "REMOTE_TUNNEL_LOCAL_PORT=17800",
+                "REMOTE_TUNNEL_REMOTE_HOST=127.0.0.1",
+                "REMOTE_TUNNEL_REMOTE_PORT=7800",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env, argv_file = fake_ssh_env(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel", "--profile", str(profile)],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert argv_file.read_text(encoding="utf-8").splitlines() == [
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-N",
+        "-L",
+        "17800:127.0.0.1:7800",
+        "wangqiao@47.94.108.140",
+    ]
+
+
+def test_remote_status_reads_profile_and_calls_ssh(tmp_path):
+    profile = tmp_path / "remote.env"
+    profile.write_text(
+        "REMOTE_HOST=wangqiao@47.94.108.140\nREMOTE_DIR=/data/wangqiao/comfy-shell-v2\n",
+        encoding="utf-8",
+    )
+    env, argv_file = fake_ssh_env(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "status", "--profile", str(profile)],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    argv = argv_file.read_text(encoding="utf-8").splitlines()
+    assert argv == [
+        "wangqiao@47.94.108.140",
+        "cd '/data/wangqiao/comfy-shell-v2' && ./scripts/dev.sh status",
+    ]
+
+
+def test_remote_logs_reads_profile_tail_and_calls_ssh(tmp_path):
+    profile = tmp_path / "remote.env"
+    profile.write_text(
+        "\n".join(
+            [
+                "REMOTE_HOST=wangqiao@47.94.108.140",
+                "REMOTE_DIR=/data/wangqiao/comfy-shell-v2",
+                "REMOTE_LOG_TAIL=42",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env, argv_file = fake_ssh_env(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "logs", "--profile", str(profile)],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert argv_file.read_text(encoding="utf-8").splitlines() == [
+        "wangqiao@47.94.108.140",
+        "cd '/data/wangqiao/comfy-shell-v2' && tail -n '42' logs/api.log",
+    ]
+
+
+def test_remote_cli_args_override_profile(tmp_path):
+    profile = tmp_path / "remote.env"
+    profile.write_text(
+        "REMOTE_HOST=profile@example.com\nREMOTE_TUNNEL_LOCAL_PORT=17800\nREMOTE_TUNNEL_REMOTE_PORT=7800\n",
+        encoding="utf-8",
+    )
+
+    result = run_script(
+        "./scripts/remote.sh",
+        "tunnel",
+        "--profile",
+        str(profile),
+        "--host",
+        "cli@example.com",
+        "--local-port",
+        "18800",
+        "--remote-port",
+        "7900",
+        "--dry-run",
+    )
+
+    assert result.returncode == 0
+    assert "127.0.0.1:18800 -> 127.0.0.1:7900 via cli@example.com" in result.stdout
+    assert "profile@example.com" not in result.stdout
+
+
+def test_remote_environment_overrides_profile(tmp_path):
+    profile = tmp_path / "remote.env"
+    profile.write_text("REMOTE_HOST=profile@example.com\nREMOTE_TUNNEL_LOCAL_PORT=17800\n", encoding="utf-8")
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel", "--profile", str(profile), "--dry-run"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, REMOTE_HOST="env@example.com", REMOTE_TUNNEL_LOCAL_PORT="19800"),
+    )
+
+    assert result.returncode == 0
+    assert "127.0.0.1:19800 -> 127.0.0.1:7800 via env@example.com" in result.stdout
+    assert "profile@example.com" not in result.stdout
+
+
+def test_remote_reads_env_file_when_profile_is_omitted(tmp_path):
+    env_file = tmp_path / "remote.env"
+    env_file.write_text("REMOTE_HOST=envfile@example.com\nREMOTE_TUNNEL_LOCAL_PORT=20800\n", encoding="utf-8")
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel", "--dry-run"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ENV_FILE=str(env_file)),
+    )
+
+    assert result.returncode == 0
+    assert "127.0.0.1:20800 -> 127.0.0.1:7800 via envfile@example.com" in result.stdout
+
+
+def test_remote_reads_default_env_from_root_dir(tmp_path):
+    root = tmp_path / "remote-root"
+    root.mkdir()
+    (root / ".env").write_text("REMOTE_HOST=default-env@example.com\nREMOTE_TUNNEL_LOCAL_PORT=21800\n", encoding="utf-8")
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel", "--dry-run"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0
+    assert "127.0.0.1:21800 -> 127.0.0.1:7800 via default-env@example.com" in result.stdout
+
+
+def test_remote_missing_profile_file_fails():
+    result = run_script("./scripts/remote.sh", "tunnel", "--profile", "/tmp/comfy-shell-v2-missing.env", "--dry-run")
+
+    assert result.returncode == 2
+    assert "config file not found" in result.stderr
+
+
+def test_remote_missing_host_explains_config(tmp_path):
+    profile = tmp_path / "remote.env"
+    profile.write_text("", encoding="utf-8")
+
+    result = subprocess.run(
+        ["./scripts/remote.sh", "tunnel", "--profile", str(profile), "--dry-run"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path),
+    )
+
+    assert result.returncode == 2
+    assert "REMOTE_HOST is not configured" in result.stderr
+    assert "remote.sh does not guess remote targets" in result.stderr
+
+
+def test_remote_tunnel_rejects_invalid_port(tmp_path):
+    profile = tmp_path / "remote.env"
+    profile.write_text("REMOTE_HOST=wangqiao@47.94.108.140\nREMOTE_TUNNEL_LOCAL_PORT=bad\n", encoding="utf-8")
+
+    result = run_script("./scripts/remote.sh", "tunnel", "--profile", str(profile), "--dry-run")
+
+    assert result.returncode == 2
+    assert "--local-port must be numeric" in result.stderr
 
 
 def test_run_dev_status_checks_api_then_compose_deps(tmp_path):
