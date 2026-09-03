@@ -70,6 +70,11 @@
         padding: 0 12px;
       }
 
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
       button.secondary {
         background: #ffffff;
         color: #202124;
@@ -166,7 +171,7 @@
           <h2>Model Roots</h2>
           <div class="stack">
             <label>Label <input id="model-label" value="Shared Models" /></label>
-            <label>Path <input id="model-path" placeholder="/data/comfy-shell-v2/ComfyUI-Shared/models" /></label>
+            <label>Path <input id="model-path" /></label>
             <button id="create-model-root" type="button">Add Model Root</button>
             <div id="model-roots" class="list"></div>
           </div>
@@ -207,6 +212,10 @@
       const state = { hosts: [], modelRoots: [], instances: [], selectedHostId: null, selectedInstanceId: null };
       const apiPrefix = "__API_PREFIX__";
       const output = document.querySelector("#output");
+      const modelPathInput = document.querySelector("#model-path");
+      const createModelRootButton = document.querySelector("#create-model-root");
+      const createInstanceButton = document.querySelector("#create-instance");
+      const instanceActions = ["install", "start", "stop", "status", "ready", "logs"].map((id) => document.querySelector(`#${id}`));
 
       function headers() {
         const token = document.querySelector("#token").value;
@@ -225,6 +234,38 @@
         return body.data;
       }
 
+      function selectedHost() {
+        return state.hosts.find((host) => host.id === state.selectedHostId) || null;
+      }
+
+      function selectedInstance() {
+        return state.instances.find((instance) => instance.id === state.selectedInstanceId) || null;
+      }
+
+      function defaultModelRootPath(host) {
+        if (!host) return "";
+        return `${host.data_root.replace(/\/+$/, "")}/ComfyUI-Shared/models`;
+      }
+
+      function modelRootPathRegistered(path) {
+        return state.modelRoots.some((root) => root.path === path);
+      }
+
+      function syncControls() {
+        const hasHost = Boolean(selectedHost());
+        const hasInstance = Boolean(selectedInstance());
+        const modelPath = modelPathInput.value || modelPathInput.placeholder;
+        createModelRootButton.disabled = !hasHost || !modelPath || modelRootPathRegistered(modelPath);
+        createInstanceButton.disabled = !hasHost;
+        instanceActions.forEach((button) => {
+          button.disabled = !hasInstance;
+        });
+        modelPathInput.placeholder = hasHost ? defaultModelRootPath(selectedHost()) : "";
+        if (hasHost && !modelPathInput.value) {
+          modelPathInput.value = defaultModelRootPath(selectedHost());
+        }
+      }
+
       function renderHosts() {
         document.querySelector("#hosts").innerHTML = state.hosts
           .map(
@@ -235,20 +276,33 @@
           )
           .join("");
         document.querySelectorAll("[data-host]").forEach((node) => {
-          node.addEventListener("click", () => {
+          node.addEventListener("click", async () => {
+            if (state.selectedHostId === node.dataset.host) return;
             state.selectedHostId = node.dataset.host;
+            state.selectedInstanceId = null;
+            state.modelRoots = [];
+            state.instances = [];
+            modelPathInput.value = defaultModelRootPath(selectedHost());
             renderHosts();
+            renderModelRoots();
+            renderInstances();
+            await loadHostResources(state.selectedHostId);
           });
         });
+        syncControls();
       }
 
       function renderModelRoots() {
         document.querySelector("#model-roots").innerHTML = state.modelRoots
           .map((root) => `<div class="item"><strong>${root.label}</strong><div class="muted">${root.path}</div></div>`)
           .join("");
+        syncControls();
       }
 
       function renderInstances() {
+        if (!selectedInstance()) {
+          state.selectedInstanceId = state.instances[0]?.id || null;
+        }
         document.querySelector("#instances").innerHTML = state.instances
           .map(
             (item) => `<div class="item ${item.id === state.selectedInstanceId ? "active" : ""}" data-instance="${item.id}">
@@ -263,24 +317,47 @@
             renderInstances();
           });
         });
+        syncControls();
+      }
+
+      async function loadHostResources(hostId) {
+        if (!hostId) {
+          state.modelRoots = [];
+          state.instances = [];
+          renderModelRoots();
+          renderInstances();
+          return;
+        }
+        const hostParam = encodeURIComponent(hostId);
+        const roots = await request(`/model-roots?host_id=${hostParam}`);
+        if (state.selectedHostId !== hostId) return;
+        state.modelRoots = roots.model_roots;
+        renderModelRoots();
+        const instances = await request(`/instances?host_id=${hostParam}`);
+        if (state.selectedHostId !== hostId) return;
+        state.instances = instances.instances;
+        renderInstances();
       }
 
       async function refresh() {
         const hosts = await request("/hosts");
         state.hosts = hosts.hosts;
-        state.selectedHostId = state.selectedHostId || state.hosts[0]?.id || null;
+        if (!selectedHost()) {
+          state.selectedHostId = state.hosts[0]?.id || null;
+          state.selectedInstanceId = null;
+        }
+        modelPathInput.value = defaultModelRootPath(selectedHost());
         renderHosts();
-        const roots = await request(state.selectedHostId ? `/model-roots?host_id=${state.selectedHostId}` : "/model-roots");
-        state.modelRoots = roots.model_roots;
-        renderModelRoots();
-        const instances = await request(state.selectedHostId ? `/instances?host_id=${state.selectedHostId}` : "/instances");
-        state.instances = instances.instances;
-        state.selectedInstanceId = state.selectedInstanceId || state.instances[0]?.id || null;
-        renderInstances();
+        await loadHostResources(state.selectedHostId);
       }
 
       document.querySelector("#refresh").addEventListener("click", refresh);
+      modelPathInput.addEventListener("input", syncControls);
       document.querySelector("#create-model-root").addEventListener("click", async () => {
+        if (!selectedHost()) {
+          show({ code: "HOST_NOT_SELECTED", message: "Select a host first." });
+          return;
+        }
         await request("/model-roots", {
           method: "POST",
           body: JSON.stringify({
@@ -289,9 +366,13 @@
             path: document.querySelector("#model-path").value,
           }),
         });
-        await refresh();
+        await loadHostResources(state.selectedHostId);
       });
       document.querySelector("#create-instance").addEventListener("click", async () => {
+        if (!selectedHost()) {
+          show({ code: "HOST_NOT_SELECTED", message: "Select a host first." });
+          return;
+        }
         await request("/instances", {
           method: "POST",
           body: JSON.stringify({
@@ -303,19 +384,28 @@
             model_root_ids: state.modelRoots.map((item) => item.id),
           }),
         });
-        await refresh();
+        await loadHostResources(state.selectedHostId);
       });
       for (const action of ["install", "start", "stop"]) {
         document.querySelector(`#${action}`).addEventListener("click", async () => {
+          if (!selectedInstance()) {
+            show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
+            return;
+          }
           await request(`/instances/${state.selectedInstanceId}/${action}`, { method: "POST", body: JSON.stringify({}) });
-          await refresh();
+          await loadHostResources(state.selectedHostId);
         });
       }
       for (const action of ["status", "ready", "logs"]) {
         document.querySelector(`#${action}`).addEventListener("click", async () => {
+          if (!selectedInstance()) {
+            show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
+            return;
+          }
           await request(`/instances/${state.selectedInstanceId}/${action}`);
         });
       }
+      syncControls();
     </script>
   </body>
 </html>

@@ -231,6 +231,9 @@ def test_ui_injects_configured_api_prefix():
 
     assert response.status_code == 200
     assert 'const apiPrefix = "/api";' in response.text
+    assert "/data/comfy-shell-v2/ComfyUI-Shared/models" not in response.text
+    assert "function defaultModelRootPath(host)" in response.text
+    assert "/ComfyUI-Shared/models" in response.text
 
 
 def test_access_log_exposes_stable_fields(test_settings):
