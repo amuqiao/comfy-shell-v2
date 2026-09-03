@@ -3,7 +3,7 @@ set -eu
 
 APP_MODULE="${APP_MODULE:-app.main:app}"
 HOST="${API_HOST:-0.0.0.0}"
-PORT="${API_PORT:-8100}"
+PORT="${API_PORT:-7800}"
 WORKERS="${API_WORKERS:-1}"
 LOG_LEVEL="$(printf '%s' "${OBSERVABILITY__LOG_LEVEL:-info}" | tr '[:upper:]' '[:lower:]')"
 

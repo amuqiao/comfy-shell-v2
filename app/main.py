@@ -9,8 +9,9 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.routes.items import router as items_router
+from app.api.routes.comfy import router as comfy_router
 from app.api.routes.health import router as health_router
+from app.api.routes.ui import router as ui_router
 from app.core.config import AppSettings, get_settings
 from app.core.context import get_request_id, get_trace_id
 from app.core.exceptions import AppError
@@ -165,7 +166,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     install_exception_handlers(application)
     application.include_router(health_router)
-    application.include_router(items_router, prefix=app_settings.service.api_prefix)
+    application.include_router(ui_router)
+    application.include_router(comfy_router, prefix=app_settings.service.api_prefix)
     install_openapi(application)
     return application
 

@@ -49,6 +49,7 @@ def validate_operation_route_drift(app: FastAPI) -> None:
         (method, route.path, route.operation_id, route.status_code or 200)
         for route in app.routes
         if isinstance(route, APIRoute)
+        if route.include_in_schema
         for method in route.methods
         if method in allowed_methods
     }
@@ -62,7 +63,9 @@ def validate_operation_route_drift(app: FastAPI) -> None:
         raise RuntimeError(f"operation registry drift missing={missing} extra={extra}")
 
     routes_by_operation_id = {
-        route.operation_id: route for route in app.routes if isinstance(route, APIRoute) and route.operation_id
+        route.operation_id: route
+        for route in app.routes
+        if isinstance(route, APIRoute) and route.include_in_schema and route.operation_id
     }
     openapi = app.openapi()
     components = openapi.get("components", {}).get("schemas", {})

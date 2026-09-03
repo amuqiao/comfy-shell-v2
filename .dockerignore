@@ -9,3 +9,6 @@ htmlcov
 .run
 logs
 storage
+ComfyUI-Installs
+ComfyUI-Shared
+ComfyUI-Cache

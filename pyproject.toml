@@ -1,7 +1,7 @@
 [project]
-name = "fastapi-lite"
+name = "comfy-shell-v2"
 version = "0.2.0"
-description = "Reusable FastAPI service skeleton"
+description = "Lightweight web control plane for Linux ComfyUI instances"
 requires-python = ">=3.13"
 dependencies = [
     "alembic==1.18.4",

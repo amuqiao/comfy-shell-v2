@@ -4,11 +4,11 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ${POSTGRES_DB:-fastapi_lite}
+      POSTGRES_DB: ${POSTGRES_DB:-comfy_shell}
     ports:
       - "${POSTGRES_HOST_PORT:-25432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-fastapi_lite}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-comfy_shell}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -39,13 +39,13 @@ services:
         condition: service_healthy
     environment:
       RUNTIME__APP_ENV: ${RUNTIME__APP_ENV:-local}
-      SERVICE__NAME: ${SERVICE__NAME:-fastapi-lite}
-      SERVICE__TITLE: ${SERVICE__TITLE:-FastAPI Lite}
+      SERVICE__NAME: ${SERVICE__NAME:-comfy-shell-v2}
+      SERVICE__TITLE: ${SERVICE__TITLE:-Comfy Shell}
       SERVICE__API_PREFIX: ${SERVICE__API_PREFIX:-/v1}
       SECURITY__SERVICE_API_KEY: ${SECURITY__SERVICE_API_KEY:-<replace-me>}
       SECURITY__DISABLE_AUTH: ${SECURITY__DISABLE_AUTH:-false}
-      SECURITY__ALLOWED_ORIGINS: ${SECURITY__ALLOWED_ORIGINS:-http://localhost:3000}
-      DATABASE__URL: postgresql+asyncpg://postgres:postgres@postgres:5432/${POSTGRES_DB:-fastapi_lite}
+      SECURITY__ALLOWED_ORIGINS: ${SECURITY__ALLOWED_ORIGINS:-http://127.0.0.1:7800,http://localhost:7800}
+      DATABASE__URL: postgresql+asyncpg://postgres:postgres@postgres:5432/${POSTGRES_DB:-comfy_shell}
       DATABASE__SSL: "false"
       DATABASE__POOL_SIZE: ${DATABASE__POOL_SIZE:-5}
       DATABASE__MAX_OVERFLOW: ${DATABASE__MAX_OVERFLOW:-10}
@@ -62,13 +62,24 @@ services:
       OBSERVABILITY__LOG_LEVEL: ${OBSERVABILITY__LOG_LEVEL:-INFO}
       OBSERVABILITY__ACCESS_LOG_ENABLED: ${OBSERVABILITY__ACCESS_LOG_ENABLED:-true}
       OBSERVABILITY__HEALTH_ACCESS_LOG: ${OBSERVABILITY__HEALTH_ACCESS_LOG:-false}
+      COMFY__DATA_ROOT: ${COMFY__DATA_ROOT:-}
+      COMFY__INSTANCE_PORT_START: ${COMFY__INSTANCE_PORT_START:-8188}
+      COMFY__REPO_URL: ${COMFY__REPO_URL:-https://github.com/comfyanonymous/ComfyUI.git}
+      COMFY__DEFAULT_REF: ${COMFY__DEFAULT_REF:-}
+      COMFY__PYTHON_VERSION: ${COMFY__PYTHON_VERSION:-3.12}
+      COMFY__TORCH_PROFILE: ${COMFY__TORCH_PROFILE:-requirements}
+      COMFY__BIND_HOST: ${COMFY__BIND_HOST:-127.0.0.1}
+      EXECUTOR__MODE: ${EXECUTOR__MODE:-local}
+      SSH__TARGET: ${SSH__TARGET:-}
+      SSH__CONNECT_TIMEOUT_SECONDS: ${SSH__CONNECT_TIMEOUT_SECONDS:-10}
+      SSH__REMOTE_COMFYCTL: ${SSH__REMOTE_COMFYCTL:-}
       API_HOST: 0.0.0.0
-      API_PORT: 8100
+      API_PORT: 7800
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
     ports:
-      - "${API_HOST_PORT:-8100}:8100"
+      - "${API_HOST_PORT:-7800}:7800"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=2).read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7800/health', timeout=2).read()"]
       interval: 10s
       timeout: 3s
       retries: 12

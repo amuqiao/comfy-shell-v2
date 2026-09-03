@@ -8,3 +8,6 @@ htmlcov/
 storage/
 .run/
 logs/
+ComfyUI-Installs/
+ComfyUI-Shared/
+ComfyUI-Cache/

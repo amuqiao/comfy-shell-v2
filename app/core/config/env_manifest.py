@@ -29,6 +29,17 @@ APPLICATION_ENV_KEYS = frozenset(
         "OBSERVABILITY__LOG_LEVEL",
         "OBSERVABILITY__ACCESS_LOG_ENABLED",
         "OBSERVABILITY__HEALTH_ACCESS_LOG",
+        "COMFY__DATA_ROOT",
+        "COMFY__INSTANCE_PORT_START",
+        "COMFY__REPO_URL",
+        "COMFY__DEFAULT_REF",
+        "COMFY__PYTHON_VERSION",
+        "COMFY__TORCH_PROFILE",
+        "COMFY__BIND_HOST",
+        "EXECUTOR__MODE",
+        "SSH__TARGET",
+        "SSH__CONNECT_TIMEOUT_SECONDS",
+        "SSH__REMOTE_COMFYCTL",
     }
 )
 
@@ -70,4 +81,3 @@ ENV_KEY_MANIFEST = EnvKeyManifest(
     derived_keys=DERIVED_ENV_KEYS,
     deprecated_keys=DEPRECATED_ENV_KEYS,
 )
-

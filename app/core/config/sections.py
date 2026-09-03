@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
@@ -16,8 +17,8 @@ class RuntimeSettings(ConfigSection):
 
 
 class ServiceSettings(ConfigSection):
-    name: str = "fastapi-lite"
-    title: str = "FastAPI Lite"
+    name: str = "comfy-shell-v2"
+    title: str = "Comfy Shell"
     api_prefix: str = "/v1"
 
     @field_validator("api_prefix")
@@ -48,7 +49,7 @@ class SecuritySettings(ConfigSection):
 
 
 class DatabaseSettings(ConfigSection):
-    url: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:25432/fastapi_lite"
+    url: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:25432/comfy_shell"
     ssl: bool = False
     pool_size: int = 5
     max_overflow: int = 10
@@ -124,3 +125,57 @@ class ObservabilitySettings(ConfigSection):
             raise ValueError("OBSERVABILITY__LOG_LEVEL must be a valid Python logging level")
         return normalized
 
+
+class ComfySettings(ConfigSection):
+    data_root: str = ""
+    instance_port_start: int = 8188
+    repo_url: str = "https://github.com/comfyanonymous/ComfyUI.git"
+    default_ref: str = ""
+    python_version: str = "3.12"
+    torch_profile: str = "requirements"
+    bind_host: str = "127.0.0.1"
+
+    @field_validator("data_root")
+    @classmethod
+    def validate_data_root(cls, value: str) -> str:
+        if value and not Path(value).is_absolute():
+            raise ValueError("COMFY__DATA_ROOT must be empty or an absolute path")
+        return value
+
+    @field_validator("instance_port_start")
+    @classmethod
+    def validate_instance_port_start(cls, value: int) -> int:
+        if value < 1 or value > 65535:
+            raise ValueError("COMFY__INSTANCE_PORT_START must be between 1 and 65535")
+        return value
+
+    @field_validator("torch_profile")
+    @classmethod
+    def validate_torch_profile(cls, value: str) -> str:
+        if value != "requirements":
+            raise ValueError("P1 only supports COMFY__TORCH_PROFILE=requirements")
+        return value
+
+    @field_validator("bind_host")
+    @classmethod
+    def validate_bind_host(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("COMFY__BIND_HOST is required")
+        return value
+
+
+class ExecutorSettings(ConfigSection):
+    mode: Literal["local", "ssh"] = "local"
+
+
+class SshSettings(ConfigSection):
+    target: str = ""
+    connect_timeout_seconds: int = 10
+    remote_comfyctl: str = ""
+
+    @field_validator("connect_timeout_seconds")
+    @classmethod
+    def validate_connect_timeout(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("SSH__CONNECT_TIMEOUT_SECONDS must be greater than 0")
+        return value

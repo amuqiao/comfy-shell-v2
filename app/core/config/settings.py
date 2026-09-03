@@ -7,13 +7,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.config.env_manifest import ENV_KEY_MANIFEST
 from app.core.config.sections import (
+    ComfySettings,
     DatabaseSettings,
+    ExecutorSettings,
     HttpClientSettings,
     ObservabilitySettings,
     RedisSettings,
     RuntimeSettings,
     SecuritySettings,
     ServiceSettings,
+    SshSettings,
     StorageSettings,
 )
 from app.core.config.validation import validate_release_invariants
@@ -67,10 +70,15 @@ class AppSettings(BaseSettings):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     http_client: HttpClientSettings = Field(default_factory=HttpClientSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    comfy: ComfySettings = Field(default_factory=ComfySettings)
+    executor: ExecutorSettings = Field(default_factory=ExecutorSettings)
+    ssh: SshSettings = Field(default_factory=SshSettings)
 
     @model_validator(mode="after")
     def validate_invariants(self) -> "AppSettings":
         self.security.allowed_origin_list
+        if self.executor.mode == "ssh" and not self.ssh.target:
+            raise ValueError("SSH__TARGET is required when EXECUTOR__MODE=ssh")
         validate_release_invariants(
             runtime=self.runtime,
             security=self.security,

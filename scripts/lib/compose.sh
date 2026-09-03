@@ -15,7 +15,7 @@ compose_project_name() {
 
   env_file="$(env_file_path)"
   project_name="${COMPOSE_PROJECT_NAME:-$(env_value_from COMPOSE_PROJECT_NAME "$env_file")}"
-  project_name="${project_name:-fastapi-lite}"
+  project_name="${project_name:-comfy-shell-v2}"
   printf "%s" "$project_name"
 }
 

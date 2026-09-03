@@ -141,7 +141,7 @@ def test_verify_subcommand_help_does_not_execute_task():
 def test_verify_postgres_rejects_non_test_database_with_config_exit_code():
     result = run_script(
         "env",
-        "DATABASE__URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:25432/fastapi_lite",
+        "DATABASE__URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:25432/comfy_shell",
         "./scripts/verify.sh",
         "postgres",
     )
@@ -199,7 +199,7 @@ def test_k8s_check_config_uses_application_settings(tmp_path):
         env=script_env(
             tmp_path,
             KUBERNETES_SERVICE_HOST="10.96.0.1",
-            DATABASE__URL="postgresql+asyncpg://postgres:secret@postgres.default.svc:5432/fastapi_lite",
+            DATABASE__URL="postgresql+asyncpg://postgres:secret@postgres.default.svc:5432/comfy_shell",
             REDIS__URL="redis://redis.default.svc:6379/0",
             REDIS__ENABLED="true",
             STORAGE__BACKEND="disabled",
@@ -996,16 +996,16 @@ if [ "$1" = "compose" ] && [ "$2" = "version" ]; then
 fi
 if [ "$1" = "ps" ]; then
   case "$*" in
-    *"com.docker.compose.service=postgres"*) echo "fastapi-lite-postgres-1"; exit 0 ;;
-    *"com.docker.compose.service=redis"*) echo "fastapi-lite-redis-1"; exit 0 ;;
+    *"com.docker.compose.service=postgres"*) echo "comfy-shell-v2-postgres-1"; exit 0 ;;
+    *"com.docker.compose.service=redis"*) echo "comfy-shell-v2-redis-1"; exit 0 ;;
     *"com.docker.compose.project.working_dir"*) echo "{ROOT_DIR}"; exit 0 ;;
     *) exit 0 ;;
   esac
 fi
 if [ "$1" = "port" ]; then
   case "$2:$3" in
-    fastapi-lite-postgres-1:5432/tcp) echo "0.0.0.0:25432"; exit 0 ;;
-    fastapi-lite-redis-1:6379/tcp) echo "0.0.0.0:26379"; exit 0 ;;
+    comfy-shell-v2-postgres-1:5432/tcp) echo "0.0.0.0:25432"; exit 0 ;;
+    comfy-shell-v2-redis-1:6379/tcp) echo "0.0.0.0:26379"; exit 0 ;;
     *) exit 1 ;;
   esac
 fi
@@ -1035,7 +1035,7 @@ exit 1
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "RUNNING" in result.stdout
-    assert "fastapi-lite-postgres-1" in result.stdout
+    assert "comfy-shell-v2-postgres-1" in result.stdout
     assert "== Compose Deps ==" in result.stdout
 
 

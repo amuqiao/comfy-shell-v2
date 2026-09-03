@@ -134,7 +134,7 @@ wheels = [
 ]
 
 [[package]]
-name = "fastapi-lite"
+name = "comfy-shell-v2"
 version = "0.2.0"
 source = { virtual = "." }
 dependencies = [

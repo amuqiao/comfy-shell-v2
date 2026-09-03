@@ -14,11 +14,13 @@ RUN uv sync --frozen --no-dev
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
+COPY comfyctl ./comfyctl
+COPY bin ./bin
 COPY scripts ./scripts
 COPY start-api.sh ./start-api.sh
 
-RUN chmod +x ./start-api.sh
+RUN chmod +x ./start-api.sh ./bin/comfyctl
 
-EXPOSE 8100
+EXPOSE 7800
 
 CMD ["./start-api.sh"]

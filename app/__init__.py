@@ -1,2 +1,1 @@
-"""FastAPI Lite application package."""
-
+"""Comfy Shell application package."""

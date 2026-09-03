@@ -40,97 +40,142 @@
 
 ## Routes
 
-下表使用默认 `SERVICE__API_PREFIX=/v1` 展示公开路径。代码中的 operation registry 保存未挂载业务路径，例如 `/items`；运行时由 `SERVICE__API_PREFIX` 渲染成公开路径。
+下表使用默认 `SERVICE__API_PREFIX=/v1` 展示公开路径。代码中的 operation registry 保存未挂载业务路径，例如 `/instances`；运行时由 `SERVICE__API_PREFIX` 渲染成公开路径。
 
 | Operation | Method / Path | Auth | Success | Stable Errors |
 |---|---|---|---|---|
 | `health` | `GET /health` | no | `200` | none |
 | `ready` | `GET /ready` | no | `200` | `DEPENDENCY_UNAVAILABLE` |
-| `create_item` | `POST /v1/items` | yes | `201` | `UNAUTHORIZED`, `REQUEST_INVALID`, `ITEM_NAME_CONFLICT` |
-| `get_item` | `GET /v1/items/{item_id}` | yes | `200` | `UNAUTHORIZED`, `ITEM_NOT_FOUND` |
-| `list_items` | `GET /v1/items` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID` |
-| `update_item` | `PATCH /v1/items/{item_id}` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `ITEM_NOT_FOUND`, `ITEM_NAME_CONFLICT`, `ITEM_VERSION_CONFLICT` |
-| `delete_item` | `DELETE /v1/items/{item_id}` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `ITEM_NOT_FOUND`, `ITEM_VERSION_CONFLICT` |
+| `list_hosts` | `GET /v1/hosts` | yes | `200` | `UNAUTHORIZED` |
+| `create_host` | `POST /v1/hosts` | yes | `201` | `UNAUTHORIZED`, `REQUEST_INVALID`, `HOST_NAME_CONFLICT`, `EXECUTOR_UNSUPPORTED` |
+| `probe_host` | `POST /v1/hosts/{host_id}/probe` | yes | `200` | `UNAUTHORIZED`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED` |
+| `list_model_roots` | `GET /v1/model-roots` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID` |
+| `create_model_root` | `POST /v1/model-roots` | yes | `201` | `UNAUTHORIZED`, `REQUEST_INVALID`, `HOST_NOT_FOUND`, `MODEL_ROOT_CONFLICT` |
+| `check_model_root` | `POST /v1/model-roots/{model_root_id}/check` | yes | `200` | `UNAUTHORIZED`, `MODEL_ROOT_NOT_FOUND`, `COMFYCTL_FAILED` |
+| `list_instances` | `GET /v1/instances` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID` |
+| `create_instance` | `POST /v1/instances` | yes | `201` | `UNAUTHORIZED`, `REQUEST_INVALID`, `HOST_NOT_FOUND`, `MODEL_ROOT_NOT_FOUND`, `INSTANCE_SLUG_CONFLICT` |
+| `get_instance` | `GET /v1/instances/{instance_id}` | yes | `200` | `UNAUTHORIZED`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND` |
+| `install_instance` | `POST /v1/instances/{instance_id}/install` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_LOCKED`, `DEPENDENCY_MISSING`, `GIT_FAILED`, `UV_FAILED`, `PYTHON_DEPENDENCY_FAILED` |
+| `reinstall_instance` | `POST /v1/instances/{instance_id}/reinstall` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_LOCKED`, `DEPENDENCY_MISSING`, `GIT_FAILED`, `UV_FAILED`, `PYTHON_DEPENDENCY_FAILED` |
+| `start_instance` | `POST /v1/instances/{instance_id}/start` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_NOT_INSTALLED`, `VENV_MISSING`, `PROCESS_START_FAILED` |
+| `stop_instance` | `POST /v1/instances/{instance_id}/stop` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PROCESS_STOP_TIMEOUT`, `PID_INVALID` |
+| `status_instance` | `GET /v1/instances/{instance_id}/status` | yes | `200` | `UNAUTHORIZED`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PID_INVALID` |
+| `ready_instance` | `GET /v1/instances/{instance_id}/ready` | yes | `200` | `UNAUTHORIZED`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED` |
+| `logs_instance` | `GET /v1/instances/{instance_id}/logs` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED` |
+| `list_runs` | `GET /v1/runs` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID` |
+| `get_run` | `GET /v1/runs/{run_id}` | yes | `200` | `UNAUTHORIZED`, `RUN_NOT_FOUND` |
 
 Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ERROR` are defined by the common error contract. `app/api/operations.py` tracks route-specific business errors; the table above lists the caller-visible union where useful.
 
 `GET /ready` returns `200` with `data.status=ok` when all checks pass. If only optional checks fail, it still returns `200` with `data.status=degraded`. If any required check fails, it returns `503 DEPENDENCY_UNAVAILABLE`.
 
-## Items Request Shapes
+## Comfy Request Shapes
 
-`POST /v1/items`:
-
-```json
-{
-  "name": "alpha",
-  "description": "optional",
-  "status": "active"
-}
-```
-
-Rules:
-
-- `name`: required, length `1..120`.
-- `description`: optional string or null.
-- `status`: `draft`, `active`, or `archived`; default is `active`.
-
-`PATCH /v1/items/{item_id}`:
+`POST /v1/hosts`:
 
 ```json
 {
-  "expected_version": 1,
-  "name": "alpha",
-  "description": "optional",
-  "status": "archived"
+  "name": "local",
+  "connection": "local",
+  "service_root": "/data/wangqiao/comfy-shell-v2",
+  "data_root": "/data/wangqiao/comfy-shell-v2"
 }
 ```
 
-Rules:
-
-- `expected_version`: required, integer `>= 1`.
-- Patch fields are optional, but provided values must pass schema validation.
-- Stale `expected_version` returns `ITEM_VERSION_CONFLICT`.
-
-`DELETE /v1/items/{item_id}`:
+`POST /v1/model-roots`:
 
 ```json
 {
-  "expected_version": 1
+  "host_id": "uuid",
+  "label": "Shared Models",
+  "path": "/data/wangqiao/comfy-shell-v2/ComfyUI-Shared/models"
 }
 ```
 
-`GET /v1/items` query:
+`POST /v1/instances`:
+
+```json
+{
+  "host_id": "uuid",
+  "name": "Comfy Prod",
+  "instance_slug": "comfy-prod",
+  "comfy_ref": "v0.3.50",
+  "python_version": "3.12",
+  "torch_profile": "requirements",
+  "comfy_port": 8188,
+  "gpu_ids": ["0"],
+  "model_root_ids": ["uuid"],
+  "primary_model_root_id": "uuid"
+}
+```
+
+`POST /v1/instances/{instance_id}/install` and `POST /v1/instances/{instance_id}/reinstall`:
+
+```json
+{
+  "comfy_ref": "v0.3.50",
+  "restart": false
+}
+```
+
+When `restart=true`, the control plane starts the instance after a successful install/reinstall and records a separate `start` run. The install/reinstall response still returns the install/reinstall run.
+
+`POST /v1/instances/{instance_id}/start` and `POST /v1/instances/{instance_id}/stop`:
+
+```json
+{}
+```
+
+Query parameters:
 
 | Query | Contract |
 |---|---|
-| `status` | Optional `draft`, `active`, or `archived`. |
-| `limit` | Optional integer `1..100`; default `50`. |
-| `cursor` | Optional opaque cursor returned by previous page. Invalid cursor returns `REQUEST_INVALID`. |
+| `host_id` | Optional filter for `GET /v1/model-roots` and `GET /v1/instances`. |
+| `instance_id` | Optional filter for `GET /v1/runs`. |
+| `tail` | Optional integer `1..1000` for `GET /v1/instances/{instance_id}/logs`; default `200`. |
 
-## Items Response Shape
+## Comfy Response Shape
 
-Item response data:
+Instance response data:
 
 ```json
 {
   "id": "uuid",
-  "owner_id": "service",
-  "name": "alpha",
-  "description": null,
-  "status": "active",
-  "version": 1,
+  "host_id": "uuid",
+  "name": "Comfy Prod",
+  "instance_slug": "comfy-prod",
+  "install_root": "/data/wangqiao/comfy-shell-v2/ComfyUI-Installs/comfy-prod",
+  "comfy_ref": "v0.3.50",
+  "resolved_commit": "abcdef123456",
+  "python_version": "3.12",
+  "torch_profile": "requirements",
+  "comfy_port": 8188,
+  "gpu_ids": ["0"],
+  "primary_model_root_id": "uuid",
+  "model_root_ids": ["uuid"],
   "created_at": "2026-07-22T00:00:00Z",
-  "updated_at": "2026-07-22T00:00:00Z"
+  "updated_at": "2026-07-22T00:00:00Z",
+  "last_launched_at": null
 }
 ```
 
-List response data:
+Run response data:
 
 ```json
 {
-  "items": [],
-  "next_cursor": null,
-  "limit": 50
+  "id": "uuid",
+  "request_id": "req-...",
+  "host_id": "uuid",
+  "instance_id": "uuid",
+  "kind": "install",
+  "phase": "completed",
+  "started_at": "2026-07-22T00:00:00Z",
+  "ended_at": "2026-07-22T00:00:10Z",
+  "exit_code": 0,
+  "error_code": null,
+  "message": null,
+  "log_path": "/data/wangqiao/comfy-shell-v2/ComfyUI-Installs/comfy-prod/logs/comfyui.log",
+  "stderr_tail": null
 }
 ```
 
@@ -145,9 +190,26 @@ List response data:
 | `RESOURCE_CONFLICT` | 409 | no |
 | `DEPENDENCY_UNAVAILABLE` | 503 | yes |
 | `INTERNAL_ERROR` | 500 | yes |
-| `ITEM_NOT_FOUND` | 404 | no |
-| `ITEM_NAME_CONFLICT` | 409 | no |
-| `ITEM_VERSION_CONFLICT` | 409 | no |
+| `HOST_NOT_FOUND` | 404 | no |
+| `HOST_NAME_CONFLICT` | 409 | no |
+| `MODEL_ROOT_NOT_FOUND` | 404 | no |
+| `MODEL_ROOT_CONFLICT` | 409 | no |
+| `INSTANCE_NOT_FOUND` | 404 | no |
+| `INSTANCE_SLUG_CONFLICT` | 409 | no |
+| `RUN_NOT_FOUND` | 404 | no |
+| `EXECUTOR_UNSUPPORTED` | 422 | no |
+| `COMFYCTL_FAILED` | 500 | no |
+| `PORT_IN_USE` | 409 | no |
+| `INSTANCE_LOCKED` | 409 | no |
+| `DEPENDENCY_MISSING` | 503 | no |
+| `GIT_FAILED` | 502 | yes |
+| `UV_FAILED` | 502 | yes |
+| `PYTHON_DEPENDENCY_FAILED` | 502 | yes |
+| `INSTANCE_NOT_INSTALLED` | 409 | no |
+| `VENV_MISSING` | 409 | no |
+| `PROCESS_START_FAILED` | 502 | yes |
+| `PROCESS_STOP_TIMEOUT` | 504 | yes |
+| `PID_INVALID` | 500 | no |
 
 ## Compatibility
 

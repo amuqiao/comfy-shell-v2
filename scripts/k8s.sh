@@ -28,7 +28,7 @@ Usage:
   check             聚合执行 config、postgres、app、current、heads 检查。
   check config      检查应用配置加载和关键目标，不打印 secret。
   check postgres    检查 DATABASE__URL 解析结果，并执行 PostgreSQL SELECT 1。
-  check app         请求 Pod 内 http://127.0.0.1:${API_PORT:-8100}/health 和 /ready。
+  check app         请求 Pod 内 http://127.0.0.1:${API_PORT:-7800}/health 和 /ready。
   current           查看当前数据库 Alembic revision。
   heads             查看代码中的 Alembic head revision。
   history           查看 Alembic revision 历史。
@@ -277,7 +277,7 @@ from urllib.request import urlopen
 
 
 host = os.getenv("K8S_CHECK_APP_HOST", "127.0.0.1")
-port = os.getenv("API_PORT", "8100")
+port = os.getenv("API_PORT", "7800")
 base_url = os.getenv("K8S_CHECK_APP_URL", f"http://{host}:{port}")
 paths = ("/health", "/ready")
 status = 0

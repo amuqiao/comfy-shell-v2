@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.repositories.comfy_repository import CommandRunRepository, HostRepository, InstanceRepository, ModelRootRepository
 from app.repositories.item_repository import ItemRepository
 
 
@@ -10,10 +11,18 @@ class UnitOfWork:
         self._session_factory = session_factory
         self.session: AsyncSession | None = None
         self.items: ItemRepository | None = None
+        self.hosts: HostRepository | None = None
+        self.model_roots: ModelRootRepository | None = None
+        self.instances: InstanceRepository | None = None
+        self.command_runs: CommandRunRepository | None = None
 
     async def __aenter__(self) -> "UnitOfWork":
         self.session = self._session_factory()
         self.items = ItemRepository(self.session)
+        self.hosts = HostRepository(self.session)
+        self.model_roots = ModelRootRepository(self.session)
+        self.instances = InstanceRepository(self.session)
+        self.command_runs = CommandRunRepository(self.session)
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:

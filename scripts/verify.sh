@@ -121,7 +121,7 @@ Usage:
   对专用 PostgreSQL _test 数据库运行迁移和 integration tests。
 
 配置与环境变量:
-  DATABASE__URL 可覆盖目标数据库；默认指向 fastapi_lite_test。
+  DATABASE__URL 可覆盖目标数据库；默认指向 comfy_shell_test。
 
 副作用与保护边界:
   会写入 DATABASE__URL 指向的数据库。
@@ -197,7 +197,7 @@ case "$cmd" in
     if args_include_help "$@"; then command_usage "$cmd"; exit $?; fi
     reject_extra_args "usage: ./scripts/verify.sh postgres" "$@"
     cd "$ROOT_DIR"
-    export DATABASE__URL="${DATABASE__URL:-postgresql+asyncpg://postgres:postgres@127.0.0.1:25432/fastapi_lite_test}"
+    export DATABASE__URL="${DATABASE__URL:-postgresql+asyncpg://postgres:postgres@127.0.0.1:25432/comfy_shell_test}"
     uv run python scripts/verify/ensure_test_database.py
     uv run alembic upgrade head
     FASTAPI_LITE_POSTGRES_INTEGRATION=1 uv run pytest -m postgres_integration
@@ -218,8 +218,10 @@ case "$cmd" in
     bash -n scripts/deploy.sh
     bash -n scripts/run.sh
     bash -n scripts/k8s.sh
+    bash -n scripts/remote.sh
     bash -n scripts/verify.sh
     bash -n scripts/tools.sh
+    uv run python -m comfyctl.cli host probe --data-root /tmp/comfy-shell-v2-verify --json >/dev/null
     bash -n scripts/lib/compose.sh
     bash -n scripts/lib/modes.sh
     ./scripts/dev.sh help >/dev/null
@@ -231,6 +233,7 @@ case "$cmd" in
     ./scripts/run.sh check --help >/dev/null
     ./scripts/run.sh restart --help >/dev/null
     ./scripts/k8s.sh help >/dev/null
+    ./scripts/remote.sh help >/dev/null
     ./scripts/verify.sh help >/dev/null
     ./scripts/tools.sh help >/dev/null
     ./scripts/tools.sh secret --prefix test_ >/dev/null

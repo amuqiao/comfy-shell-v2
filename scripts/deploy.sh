@@ -38,11 +38,11 @@ Usage:
 
 配置与环境变量:
   ENV_FILE              可选，指定 compose 使用的 env 文件，默认 .env。
-  COMPOSE_PROJECT_NAME  可选，覆盖 compose project 名，默认 fastapi-lite。
-  API_HOST_PORT         可选，compose-full API 暴露端口，默认 8100。
+  COMPOSE_PROJECT_NAME  可选，覆盖 compose project 名，默认 comfy-shell-v2。
+  API_HOST_PORT         可选，compose-full API 暴露端口，默认 7800。
   POSTGRES_HOST_PORT    可选，PostgreSQL 暴露端口，默认 25432。
   REDIS_HOST_PORT       可选，Redis 暴露端口，默认 26379。
-  POSTGRES_DB           可选，PostgreSQL 数据库名，默认 fastapi_lite。
+  POSTGRES_DB           可选，PostgreSQL 数据库名，默认 comfy_shell。
 
 输出:
   stdout: check 结果、模式说明、compose 状态、启动/停止结果。
@@ -244,7 +244,7 @@ status_deps() {
 
 compose_api_host_url() {
   local port
-  port="$(compose_env_value_or_default API_HOST_PORT 8100)"
+  port="$(compose_env_value_or_default API_HOST_PORT 7800)"
   validate_compose_host_port API_HOST_PORT "$port"
   printf "http://127.0.0.1:%s" "$port"
 }
@@ -253,7 +253,7 @@ up_full() {
   local api_url
   require_env_file_for_compose
   assert_compose_host_ports_free "compose-full" \
-    "API_HOST_PORT:8100:api:8100/tcp" \
+    "API_HOST_PORT:7800:api:7800/tcp" \
     "POSTGRES_HOST_PORT:25432:postgres:5432/tcp" \
     "REDIS_HOST_PORT:26379:redis:6379/tcp"
   assert_no_compose_project_name_conflict

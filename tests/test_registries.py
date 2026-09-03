@@ -22,7 +22,8 @@ def test_operation_registry_contains_foundation_routes():
 
     assert "/health" in paths
     assert "/ready" in paths
-    assert "/v1/items" in paths
+    assert "/v1/hosts" in paths
+    assert "/v1/instances" in paths
     assert all(item.response_schema for item in operation_registry.all())
 
 
@@ -62,8 +63,8 @@ def test_operation_registry_drift_detects_unregistered_route():
 def test_operation_registry_drift_detects_status_mismatch():
     app = FastAPI()
 
-    @app.post("/v1/items", operation_id="create_item", status_code=200)
-    async def create_item():
+    @app.post("/v1/hosts", operation_id="create_host", status_code=200)
+    async def create_host():
         return {"ok": True}
 
     with pytest.raises(RuntimeError, match="operation registry drift"):
@@ -72,7 +73,7 @@ def test_operation_registry_drift_detects_status_mismatch():
 
 def test_operation_registry_requires_openapi_contract_metadata():
     app = create_app()
-    route = next(route for route in app.routes if getattr(route, "operation_id", None) == "create_item")
+    route = next(route for route in app.routes if getattr(route, "operation_id", None) == "create_host")
     route.response_model = None
 
     with pytest.raises(RuntimeError, match="operation contract drift"):
@@ -91,7 +92,7 @@ def test_api_contract_route_table_uses_default_documented_prefix(monkeypatch):
 
 def test_api_contract_route_table_detects_docs_drift(tmp_path):
     drifted = tmp_path / "api-contract.md"
-    drifted.write_text(API_CONTRACT_DOC.read_text(encoding="utf-8").replace("POST /v1/items", "POST /v2/items"))
+    drifted.write_text(API_CONTRACT_DOC.read_text(encoding="utf-8").replace("POST /v1/hosts", "POST /v2/hosts"))
 
     with pytest.raises(RuntimeError, match="api contract route table drift"):
         validate_api_contract_route_table(drifted)

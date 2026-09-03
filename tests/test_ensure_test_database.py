@@ -6,20 +6,20 @@ from scripts.verify.ensure_test_database import ConfigError, ensure_database, qu
 
 
 def test_require_safe_test_database_accepts_local_test_database():
-    url = make_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:35432/fastapi_lite_test")
+    url = make_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:35432/comfy_shell_test")
 
-    assert require_safe_test_database(url) == "fastapi_lite_test"
+    assert require_safe_test_database(url) == "comfy_shell_test"
 
 
 def test_require_safe_test_database_rejects_non_test_database():
-    url = make_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:35432/fastapi_lite")
+    url = make_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:35432/comfy_shell")
 
     with pytest.raises(ConfigError, match="requires \\*_test database"):
         require_safe_test_database(url)
 
 
 def test_require_safe_test_database_rejects_remote_host():
-    url = make_url("postgresql+asyncpg://postgres:postgres@db.example.com:5432/fastapi_lite_test")
+    url = make_url("postgresql+asyncpg://postgres:postgres@db.example.com:5432/comfy_shell_test")
 
     with pytest.raises(ConfigError, match="refuses non-local database host"):
         require_safe_test_database(url)
@@ -51,12 +51,12 @@ async def test_ensure_database_creates_missing_database(monkeypatch):
         return connection
 
     monkeypatch.setattr(ensure_test_database.asyncpg, "connect", fake_connect)
-    url = make_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:35432/fastapi_lite_test")
+    url = make_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:35432/comfy_shell_test")
 
-    created = await ensure_database(url, "fastapi_lite_test")
+    created = await ensure_database(url, "comfy_shell_test")
 
     assert created is True
-    assert connection.executed == ['CREATE DATABASE "fastapi_lite_test"']
+    assert connection.executed == ['CREATE DATABASE "comfy_shell_test"']
     assert connection.closed is True
 
 
@@ -82,9 +82,9 @@ async def test_ensure_database_keeps_existing_database(monkeypatch):
         return connection
 
     monkeypatch.setattr(ensure_test_database.asyncpg, "connect", fake_connect)
-    url = make_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:35432/fastapi_lite_test")
+    url = make_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:35432/comfy_shell_test")
 
-    created = await ensure_database(url, "fastapi_lite_test")
+    created = await ensure_database(url, "comfy_shell_test")
 
     assert created is False
     assert connection.executed == []

@@ -55,7 +55,7 @@ def test_ready_uses_health_registry(sqlite_app):
 def test_ready_reports_postgres_connectivity_failure():
     settings = AppSettings(
         security={"service_api_key": "test-service-key", "disable_auth": False},
-        database={"url": "postgresql+asyncpg://postgres:postgres@127.0.0.1:1/fastapi_lite"},
+        database={"url": "postgresql+asyncpg://postgres:postgres@127.0.0.1:1/comfy_shell"},
         storage={"backend": "disabled"},
         observability={"access_log_enabled": False},
     )
@@ -197,19 +197,40 @@ def test_method_not_allowed_preserves_http_status(app):
 def test_openapi_exposes_route_contract(app):
     schema = app.openapi()
 
-    create_item = schema["paths"]["/v1/items"]["post"]
-    assert create_item["operationId"] == "create_item"
-    assert create_item["security"]
+    create_host = schema["paths"]["/v1/hosts"]["post"]
+    assert create_host["operationId"] == "create_host"
+    assert create_host["security"]
     assert "HTTPBearer" in schema["components"]["securitySchemes"]
-    assert create_item["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith("/ItemCreateRequest")
-    assert "201" in create_item["responses"]
-    assert "401" in create_item["responses"]
-    assert "409" in create_item["responses"]
-    assert "422" in create_item["responses"]
-    assert create_item["responses"]["409"]["content"]["application/json"]["schema"]["$ref"].endswith("/ErrorEnvelope")
+    assert create_host["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith("/HostCreateRequest")
+    assert "201" in create_host["responses"]
+    assert "401" in create_host["responses"]
+    assert "409" in create_host["responses"]
+    assert "422" in create_host["responses"]
+    assert create_host["responses"]["409"]["content"]["application/json"]["schema"]["$ref"].endswith("/ErrorEnvelope")
+
+    status_instance = schema["paths"]["/v1/instances/{instance_id}/status"]["get"]
+    assert status_instance["operationId"] == "status_instance"
+    assert "requestBody" not in status_instance
 
     health = schema["paths"]["/health"]["get"]
     assert "security" not in health
+
+
+def test_ui_injects_configured_api_prefix():
+    settings = AppSettings(
+        service={"api_prefix": "/api"},
+        security={"service_api_key": "test-service-key", "disable_auth": False},
+        database={"url": "sqlite+aiosqlite:///:memory:"},
+        storage={"backend": "disabled"},
+        observability={"access_log_enabled": False},
+    )
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        response = client.get("/ui/")
+
+    assert response.status_code == 200
+    assert 'const apiPrefix = "/api";' in response.text
 
 
 def test_access_log_exposes_stable_fields(test_settings):

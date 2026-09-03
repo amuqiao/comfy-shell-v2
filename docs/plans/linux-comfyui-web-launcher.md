@@ -209,7 +209,7 @@ COMFY__INSTANCE_PORT_START=8188
 COMFY__REPO_URL=https://github.com/comfyanonymous/ComfyUI.git
 COMFY__DEFAULT_REF=
 COMFY__PYTHON_VERSION=3.12
-COMFY__TORCH_PROFILE=cu124
+COMFY__TORCH_PROFILE=requirements
 COMFY__BIND_HOST=127.0.0.1
 
 # package indexes
@@ -598,7 +598,7 @@ start instance, if user selected restart after reinstall
   "comfy_ref": "v0.3.50",
   "resolved_commit": "abcdef123456",
   "python_version": "3.12",
-  "torch_profile": "cu124",
+  "torch_profile": "requirements",
   "created_at": "2026-09-03T00:00:00Z"
 }
 ```

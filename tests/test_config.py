@@ -55,6 +55,6 @@ def test_runtime_env_rejects_unknown_application_key(monkeypatch):
 
 def test_runtime_env_allows_launcher_keys(monkeypatch):
     monkeypatch.setenv("API_HOST", "127.0.0.1")
-    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "fastapi-lite-test")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "comfy-shell-v2-test")
 
     validate_app_env_key_drift()

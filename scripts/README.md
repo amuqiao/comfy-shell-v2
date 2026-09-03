@@ -1,6 +1,6 @@
 # Scripts
 
-`scripts/` 是 `fastapi-lite` 的稳定本地操作入口。脚本遵循“入口合同清晰、输出可判定、高风险显式、错误快速暴露”的规则。
+`scripts/` 是 `comfy-shell-v2` 的稳定操作入口。脚本遵循“入口合同清晰、输出可判定、高风险显式、错误快速暴露”的规则。
 
 ## Entrypoints
 
@@ -10,6 +10,7 @@
 | `verify.sh` | 一次性验证：env、syntax、registry、Alembic、脚本 smoke、pytest、PostgreSQL integration gate、migration roundtrip gate。 |
 | `deploy.sh` | Docker Compose 服务入口：compose-deps、compose-full。 |
 | `run.sh` | 日常快捷 recipe 入口：编排 dev.sh 和 deploy.sh 的稳定命令。 |
+| `remote.sh` | macOS 到远端 GPU host 的 status、logs、tunnel 辅助入口。 |
 | `k8s.sh` | K8s Pod 内运维：配置、PostgreSQL、应用健康、Alembic 状态和手动迁移检查。 |
 | `tools.sh` | 无默认持久副作用工具：secret 生成、DATABASE__URL / REDIS__URL 编码。 |
 
@@ -45,7 +46,7 @@
 
 ```bash
 ./scripts/dev.sh doctor
-./scripts/dev.sh ports 8100 25432 26379
+./scripts/dev.sh ports 7800 25432 26379
 ./scripts/run.sh up dev
 ./scripts/run.sh status dev
 ./scripts/run.sh down dev
@@ -58,6 +59,7 @@
 ./scripts/tools.sh secret
 ./scripts/verify.sh check
 ./scripts/deploy.sh check
+./scripts/remote.sh tunnel --host user@gpu-host --local-port 7800 --remote-port 7800
 kubectl exec -it <api-pod> -- ./scripts/k8s.sh check
 ```
 
@@ -68,3 +70,4 @@ kubectl exec -it <api-pod> -- ./scripts/k8s.sh check
 | `./scripts/run.sh up|status|down|restart|check dev` | Daily local development environment as one recipe: Docker PostgreSQL / Redis plus host API. |
 | `./scripts/dev.sh start|status|stop api` | Precise host API process management. |
 | `./scripts/deploy.sh up|status|down compose-deps|compose-full` | Explicit Docker dependencies or full Docker Compose API/dependencies. |
+| `./scripts/remote.sh status|logs|tunnel` | Remote GPU host inspection and SSH tunnel helper. |

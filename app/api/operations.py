@@ -91,55 +91,223 @@ operation_registry.register(
 )
 operation_registry.register(
     OperationSpec(
-        "create_item",
-        "POST",
-        "/items",
-        201,
-        frozenset({"ITEM_NAME_CONFLICT"}),
-        request_schema="ItemCreateRequest",
-        response_schema="SuccessEnvelope[ItemResponse]",
-    )
-)
-operation_registry.register(
-    OperationSpec(
-        "get_item",
+        "list_hosts",
         "GET",
-        "/items/{item_id}",
+        "/hosts",
         200,
-        frozenset({"ITEM_NOT_FOUND"}),
-        response_schema="SuccessEnvelope[ItemResponse]",
+        frozenset(),
+        response_schema="SuccessEnvelope[HostListResponse]",
     )
 )
 operation_registry.register(
     OperationSpec(
-        "list_items",
+        "create_host",
+        "POST",
+        "/hosts",
+        201,
+        frozenset({"HOST_NAME_CONFLICT", "EXECUTOR_UNSUPPORTED"}),
+        request_schema="HostCreateRequest",
+        response_schema="SuccessEnvelope[HostResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "probe_host",
+        "POST",
+        "/hosts/{host_id}/probe",
+        200,
+        frozenset({"HOST_NOT_FOUND", "COMFYCTL_FAILED"}),
+        response_schema="SuccessEnvelope[ProbeResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "list_model_roots",
         "GET",
-        "/items",
+        "/model-roots",
         200,
         frozenset({"REQUEST_INVALID"}),
-        response_schema="SuccessEnvelope[ItemListResponse]",
+        response_schema="SuccessEnvelope[ModelRootListResponse]",
     )
 )
 operation_registry.register(
     OperationSpec(
-        "update_item",
-        "PATCH",
-        "/items/{item_id}",
-        200,
-        frozenset({"ITEM_NOT_FOUND", "ITEM_NAME_CONFLICT", "ITEM_VERSION_CONFLICT"}),
-        request_schema="ItemUpdateRequest",
-        response_schema="SuccessEnvelope[ItemResponse]",
+        "create_model_root",
+        "POST",
+        "/model-roots",
+        201,
+        frozenset({"HOST_NOT_FOUND", "MODEL_ROOT_CONFLICT"}),
+        request_schema="ModelRootCreateRequest",
+        response_schema="SuccessEnvelope[ModelRootResponse]",
     )
 )
 operation_registry.register(
     OperationSpec(
-        "delete_item",
-        "DELETE",
-        "/items/{item_id}",
+        "check_model_root",
+        "POST",
+        "/model-roots/{model_root_id}/check",
         200,
-        frozenset({"ITEM_NOT_FOUND", "ITEM_VERSION_CONFLICT"}),
-        request_schema="ItemDeleteRequest",
-        response_schema="SuccessEnvelope[ItemResponse]",
+        frozenset({"MODEL_ROOT_NOT_FOUND", "COMFYCTL_FAILED"}),
+        response_schema="SuccessEnvelope[ModelRootCheckResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "list_instances",
+        "GET",
+        "/instances",
+        200,
+        frozenset({"REQUEST_INVALID"}),
+        response_schema="SuccessEnvelope[InstanceListResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "create_instance",
+        "POST",
+        "/instances",
+        201,
+        frozenset({"HOST_NOT_FOUND", "MODEL_ROOT_NOT_FOUND", "INSTANCE_SLUG_CONFLICT"}),
+        request_schema="InstanceCreateRequest",
+        response_schema="SuccessEnvelope[InstanceResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "get_instance",
+        "GET",
+        "/instances/{instance_id}",
+        200,
+        frozenset({"INSTANCE_NOT_FOUND", "HOST_NOT_FOUND"}),
+        response_schema="SuccessEnvelope[InstanceResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "install_instance",
+        "POST",
+        "/instances/{instance_id}/install",
+        200,
+        frozenset(
+            {
+                "INSTANCE_NOT_FOUND",
+                "HOST_NOT_FOUND",
+                "COMFYCTL_FAILED",
+                "PORT_IN_USE",
+                "INSTANCE_LOCKED",
+                "DEPENDENCY_MISSING",
+                "GIT_FAILED",
+                "UV_FAILED",
+                "PYTHON_DEPENDENCY_FAILED",
+            }
+        ),
+        request_schema="InstanceInstallRequest",
+        response_schema="SuccessEnvelope[RunResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "reinstall_instance",
+        "POST",
+        "/instances/{instance_id}/reinstall",
+        200,
+        frozenset(
+            {
+                "INSTANCE_NOT_FOUND",
+                "HOST_NOT_FOUND",
+                "COMFYCTL_FAILED",
+                "PORT_IN_USE",
+                "INSTANCE_LOCKED",
+                "DEPENDENCY_MISSING",
+                "GIT_FAILED",
+                "UV_FAILED",
+                "PYTHON_DEPENDENCY_FAILED",
+            }
+        ),
+        request_schema="InstanceInstallRequest",
+        response_schema="SuccessEnvelope[RunResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "start_instance",
+        "POST",
+        "/instances/{instance_id}/start",
+        200,
+        frozenset(
+            {
+                "INSTANCE_NOT_FOUND",
+                "HOST_NOT_FOUND",
+                "COMFYCTL_FAILED",
+                "PORT_IN_USE",
+                "INSTANCE_NOT_INSTALLED",
+                "VENV_MISSING",
+                "PROCESS_START_FAILED",
+            }
+        ),
+        request_schema="InstanceStartRequest",
+        response_schema="SuccessEnvelope[RunResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "stop_instance",
+        "POST",
+        "/instances/{instance_id}/stop",
+        200,
+        frozenset({"INSTANCE_NOT_FOUND", "HOST_NOT_FOUND", "COMFYCTL_FAILED", "PROCESS_STOP_TIMEOUT", "PID_INVALID"}),
+        request_schema="InstanceStopRequest",
+        response_schema="SuccessEnvelope[RunResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "status_instance",
+        "GET",
+        "/instances/{instance_id}/status",
+        200,
+        frozenset({"INSTANCE_NOT_FOUND", "HOST_NOT_FOUND", "COMFYCTL_FAILED", "PID_INVALID"}),
+        response_schema="SuccessEnvelope[InstanceStatusResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "ready_instance",
+        "GET",
+        "/instances/{instance_id}/ready",
+        200,
+        frozenset({"INSTANCE_NOT_FOUND", "HOST_NOT_FOUND", "COMFYCTL_FAILED"}),
+        response_schema="SuccessEnvelope[InstanceReadyResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "logs_instance",
+        "GET",
+        "/instances/{instance_id}/logs",
+        200,
+        frozenset({"REQUEST_INVALID", "INSTANCE_NOT_FOUND", "HOST_NOT_FOUND", "COMFYCTL_FAILED"}),
+        response_schema="SuccessEnvelope[InstanceLogsResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "list_runs",
+        "GET",
+        "/runs",
+        200,
+        frozenset({"REQUEST_INVALID"}),
+        response_schema="SuccessEnvelope[RunListResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
+        "get_run",
+        "GET",
+        "/runs/{run_id}",
+        200,
+        frozenset({"RUN_NOT_FOUND"}),
+        response_schema="SuccessEnvelope[RunResponse]",
     )
 )
 operation_registry.validate()
