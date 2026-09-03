@@ -72,15 +72,21 @@ if [ "$1" = "venv" ]; then
     exit 1
   fi
   mkdir -p "$last/bin"
-  cat > "$last/bin/pip" <<'PIP'
+  cat > "$last/bin/python" <<'PYTHON'
 #!/bin/sh
-if [ "${FAKE_PIP_FAIL:-}" = "1" ]; then
-  echo "pip failed" >&2
-  exit 1
-fi
 exit 0
-PIP
-  chmod +x "$last/bin/pip"
+PYTHON
+  chmod +x "$last/bin/python"
+  exit 0
+fi
+if [ "$1" = "pip" ] && [ "$2" = "install" ]; then
+  if [ "${FAKE_PIP_FAIL:-}" = "1" ]; then
+    echo "pip failed" >&2
+    exit 1
+  fi
+  if [ -n "${FAKE_UV_LOG:-}" ]; then
+    printf '%s\n' "$*" >> "$FAKE_UV_LOG"
+  fi
   exit 0
 fi
 exit 1
@@ -175,6 +181,44 @@ def test_install_pip_failure_preserves_active_instance(tmp_path):
         expected_error="PYTHON_DEPENDENCY_FAILED",
         env=fake_tool_env(tmp_path, fail_pip=True),
     )
+
+
+def test_install_uses_uv_pip_without_venv_pip(tmp_path):
+    uv_log = tmp_path / "uv.log"
+    env = fake_tool_env(tmp_path)
+    env["FAKE_UV_LOG"] = str(uv_log)
+
+    result = run_comfyctl(
+        "instance",
+        "install",
+        "--id",
+        "inst-1",
+        "--slug",
+        "comfy-prod",
+        "--data-root",
+        str(tmp_path),
+        "--repo",
+        "https://example.invalid/ComfyUI.git",
+        "--ref",
+        "main",
+        "--python",
+        "3.12",
+        "--torch-profile",
+        "requirements",
+        "--json",
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert (tmp_path / "ComfyUI-Installs" / "comfy-prod" / "ComfyUI").is_dir()
+    assert (tmp_path / "ComfyUI-Installs" / "comfy-prod" / ".venv" / "bin" / "python").is_file()
+    assert not (tmp_path / "ComfyUI-Installs" / "comfy-prod" / ".venv" / "bin" / "pip").exists()
+    logged = uv_log.read_text(encoding="utf-8")
+    assert "pip install --python" in logged
+    assert "/ComfyUI-Installs/comfy-prod/.staging/" in logged
+    assert "/.venv/bin/python -r " in logged
 
 
 def assert_install_failure_preserves_active_instance(tmp_path, *, expected_error: str, env: dict[str, str]) -> None:

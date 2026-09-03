@@ -281,13 +281,13 @@ def command_instance_install(args: argparse.Namespace) -> int:
             )
         requirements = staging_checkout / "requirements.txt"
         if requirements.exists():
-            pip = staging_venv / "bin" / "pip"
-            install = run_command([str(pip), "install", "-r", str(requirements)])
+            venv_python = staging_venv / "bin" / "python"
+            install = run_command(["uv", "pip", "install", "--python", str(venv_python), "-r", str(requirements)])
             if install.returncode != 0:
                 raise CommandFailure(
                     EXIT_EXTERNAL,
                     "PYTHON_DEPENDENCY_FAILED",
-                    "pip install requirements failed",
+                    "uv pip install requirements failed",
                     "python",
                     log_path=str(paths.log_file),
                     stderr_tail=stderr_tail(install.stderr),
