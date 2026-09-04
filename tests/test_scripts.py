@@ -479,6 +479,7 @@ def test_dev_status_prints_comfy_data_directories(tmp_path):
 
     assert result.returncode == 0
     assert "== Comfy Data ==" in result.stdout
+    assert f"http://127.0.0.1:{env['API_PORT']}/ui/" in result.stdout
     assert str(data_root) in result.stdout
     assert str(data_root / "ComfyUI-Installs") in result.stdout
     assert str(data_root / "ComfyUI-Shared" / "models") in result.stdout
@@ -922,7 +923,7 @@ def test_run_dev_check_checks_host_then_compose_contract(tmp_path):
     ]
 
 
-def test_run_dev_up_starts_deps_then_api(tmp_path):
+def test_run_dev_up_starts_deps_migrates_starts_api_then_prints_status(tmp_path):
     root, log_file = fake_run_root(tmp_path)
 
     result = subprocess.run(
@@ -937,7 +938,9 @@ def test_run_dev_up_starts_deps_then_api(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert log_file.read_text().splitlines() == [
         "deploy up compose-deps",
+        "dev migrate",
         "dev start api",
+        "dev status",
     ]
 
 
@@ -977,7 +980,9 @@ def test_run_dev_restart_runs_down_then_up(tmp_path):
         "dev stop api",
         "deploy down compose-deps",
         "deploy up compose-deps",
+        "dev migrate",
         "dev start api",
+        "dev status",
     ]
 
 
@@ -995,6 +1000,66 @@ def test_run_dev_up_propagates_deploy_failure_without_starting_api(tmp_path):
 
     assert result.returncode == 17
     assert log_file.read_text().splitlines() == ["deploy up compose-deps"]
+
+
+def test_run_dev_up_propagates_migrate_failure_without_starting_api(tmp_path):
+    root, log_file = fake_run_root(tmp_path, dev_fail_args="migrate", dev_fail_exit=19)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "up", "dev"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 19
+    assert log_file.read_text().splitlines() == [
+        "deploy up compose-deps",
+        "dev migrate",
+    ]
+
+
+def test_run_dev_up_propagates_start_failure_without_status(tmp_path):
+    root, log_file = fake_run_root(tmp_path, dev_fail_args="start api", dev_fail_exit=21)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "up", "dev"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 21
+    assert log_file.read_text().splitlines() == [
+        "deploy up compose-deps",
+        "dev migrate",
+        "dev start api",
+    ]
+
+
+def test_run_dev_up_propagates_status_failure_after_api_start(tmp_path):
+    root, log_file = fake_run_root(tmp_path, dev_fail_args="status", dev_fail_exit=23)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "up", "dev"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 23
+    assert log_file.read_text().splitlines() == [
+        "deploy up compose-deps",
+        "dev migrate",
+        "dev start api",
+        "dev status",
+    ]
 
 
 def test_run_dev_down_propagates_dev_failure_without_stopping_deps(tmp_path):
@@ -1097,6 +1162,7 @@ def test_run_help_documents_daily_dev_contract():
     assert result.returncode == 0
     assert "restart dev" in result.stdout
     assert "check dev" in result.stdout
+    assert "migrate" in result.stdout
     assert "dev recipe 表示当前项目的日常开发环境全集" in result.stdout
     assert "down all" not in result.stdout
 
@@ -1116,6 +1182,46 @@ def test_run_action_help_does_not_execute_recipe(tmp_path, action):
 
     assert result.returncode == 0
     assert "Usage:" in result.stdout
+    assert not log_file.exists()
+
+
+def test_run_up_help_documents_daily_start_sequence(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "up", "--help"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0
+    assert "deploy.sh up compose-deps" in result.stdout
+    assert "dev.sh migrate" in result.stdout
+    assert "dev.sh start api" in result.stdout
+    assert "dev.sh status" in result.stdout
+    assert not log_file.exists()
+
+
+def test_run_status_help_documents_read_only_status_sequence(tmp_path):
+    root, log_file = fake_run_root(tmp_path)
+
+    result = subprocess.run(
+        ["./scripts/run.sh", "status", "--help"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(tmp_path, ROOT_DIR=str(root)),
+    )
+
+    assert result.returncode == 0
+    assert "只读状态检查" in result.stdout
+    assert "dev.sh status" in result.stdout
+    assert "deploy.sh status compose-deps" in result.stdout
+    assert "migrate" not in result.stdout
     assert not log_file.exists()
 
 

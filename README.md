@@ -29,9 +29,7 @@ On the remote GPU server:
 uv sync
 cp .env.example .env
 ./scripts/verify.sh check
-./scripts/deploy.sh up compose-deps
-./scripts/dev.sh migrate
-./scripts/dev.sh start api
+./scripts/run.sh up dev
 ```
 
 From macOS:
@@ -75,11 +73,10 @@ Model roots are outside instance installs. Reinstalling an instance replaces tha
 ## Common Commands
 
 ```bash
+./scripts/run.sh up dev
+./scripts/run.sh status dev
+./scripts/run.sh down dev
 ./scripts/verify.sh check
-./scripts/dev.sh start api
-./scripts/dev.sh status
-./scripts/dev.sh stop api
-./scripts/deploy.sh up compose-deps
 ./scripts/remote.sh status --host user@gpu-host --dir /data/wangqiao/comfy-shell-v2
 ./scripts/remote.sh logs --host user@gpu-host --dir /data/wangqiao/comfy-shell-v2
 ./scripts/remote.sh tunnel --host user@gpu-host --local-port 7800 --remote-port 7800
@@ -90,7 +87,7 @@ Model roots are outside instance installs. Reinstalling an instance replaces tha
 or `--profile FILE`. CLI options override environment and profile values. It does not guess remote hostnames;
 use the IP address or SSH alias that macOS can actually resolve.
 
-`scripts/dev.sh` manages only the FastAPI control plane. ComfyUI instance lifecycle is managed through the Web API and `comfyctl`.
+Daily service management should use `scripts/run.sh`. It starts Docker dependencies, runs the idempotent Alembic migration, starts the host FastAPI control plane, and prints the service status. `scripts/dev.sh` and `scripts/deploy.sh` remain precise lower-level entries for debugging API processes or Docker services. ComfyUI instance lifecycle is managed through the Web API and `comfyctl`.
 
 ## Documentation
 

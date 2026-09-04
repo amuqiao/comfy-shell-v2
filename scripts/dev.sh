@@ -31,7 +31,7 @@ Usage:
   start api        后台启动 FastAPI API。
   stop [api]       停止后台 API；省略 api 时等价于 stop api。
   restart [api]    重启后台 API；省略 api 时等价于 restart api。
-  status           展示本地 API 进程、端口、URL、配置文件、日志路径和 Comfy 数据目录。
+  status           展示本地 API 进程、端口、URL、Web UI、配置文件、日志路径和 Comfy 数据目录。
   logs             tail API 日志。
   migrate          对当前 DATABASE__URL 执行 Alembic upgrade head。
   ports [ports...] 扫描本地端口；支持 --ports、端口范围、--json。
@@ -367,6 +367,7 @@ status_api() {
     row "process" "stopped" "-"
   fi
   row "url" "configured" "$API_URL"
+  row "ui" "configured" "$API_UI_URL"
   row "docs" "configured" "$API_DOCS_URL"
   row "openapi" "configured" "$API_OPENAPI_URL"
   row "health" "configured" "$API_HEALTH_URL"

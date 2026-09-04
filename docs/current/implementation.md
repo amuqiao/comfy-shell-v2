@@ -138,7 +138,7 @@ Comfy Shell P1 产品 API 已经实现：
 - `comfyctl instance logs --id <id> --slug <slug> --data-root <path> --tail <n>`
 
 `comfyctl` 不接受任意 `install_root`。它只接受 `--data-root` 和 `--slug`，再由 `comfyctl.paths` 派生安装目录、共享目录和缓存目录。
-`host probe` 会输出 `driver_version`、`cuda_version`、`gpus`、`nvidia_smi_error` 和 `runtime_recommendation`。推荐结果只是调用方创建实例时的输入建议；`install` 和 `reinstall` 只使用实例记录中已经保存的 `comfy_ref`、`python_version` 和 `torch_profile`。
+`host probe` 会输出 `driver_version`、`cuda_version`、`gpus`、`nvidia_smi_error` 和 `runtime_recommendation`。推荐结果只是调用方创建实例时的输入建议；`install` 和 `reinstall` 默认使用实例记录中已经保存的 `comfy_ref`、`python_version` 和 `torch_profile`，也可以通过 API 请求中的 `comfy_version_id` 或高级 `comfy_ref` 明确切换安装 ref。成功安装后，实例记录保存解析后的 `comfy_ref` 和 `resolved_commit`。
 `--torch-profile` 当前支持 `requirements` 和 `cu124`；`cu124` 会先使用 `uv pip install --torch-backend cu124`
 安装已固定的 CUDA 12.4 版本组：`torch==2.6.0+cu124`、`torchvision==0.21.0+cu124`、`torchaudio==2.6.0+cu124`，再安装过滤掉这三个包的 ComfyUI requirements。普通 Python
 依赖继续使用环境中的默认 PyPI 源或镜像，避免把所有包都压到 PyTorch wheel index 上。
@@ -162,7 +162,7 @@ Comfy Shell P1 产品 API 已经实现：
 - `./scripts/tools.sh secret`
 - `./scripts/tools.sh env-url`
 
-`dev.sh` 当前提供本地 API 进程管理、端口扫描、环境检查、迁移和测试快捷入口，`status` 会展示有效的 Comfy data root、installs、shared、models、input、output 和 download cache 目录，但不创建这些目录。`deploy.sh` 当前只管理 Docker Compose 目标：`compose-deps` 管理 Docker PostgreSQL / Redis；`compose-full` 管理 Docker API / PostgreSQL / Redis，并通过 `start-api.sh` 作为 API 容器入口。`run.sh` 当前提供日常本地开发 recipe：`dev` 表示日常开发环境全集，组合 Docker PostgreSQL / Redis 与宿主机 API。`remote.sh` 当前提供 macOS 到远端 GPU host 的 `status`、`logs` 和 `tunnel` 辅助，可从 CLI、环境变量、`.env`、`ENV_FILE` 或 `--profile` 读取 `REMOTE_HOST`、`REMOTE_DIR` 和 tunnel 端口；CLI 参数优先级最高，未配置远端地址时直接报错，不猜 hostname，不同步 `.env`，不管理 ComfyUI instance 生命周期。三种管理方式分别是：日常入口 `run.sh up|status|down|restart|check dev`；单进程入口 `dev.sh start|status|stop api`；Docker 入口 `deploy.sh up|status|down compose-deps|compose-full`。`verify.sh check` 当前覆盖 env、syntax、registry、alembic、scripts、`comfyctl` smoke 和 pytest；`postgres` 与 `migration-roundtrip` 是显式 PostgreSQL gate。`tools.sh` 当前提供无默认持久副作用的 secret 和 env URL 生成工具。
+`dev.sh` 当前提供本地 API 进程管理、端口扫描、环境检查、迁移和测试快捷入口，`status` 会展示有效的 API URL、Web UI URL、Comfy data root、installs、shared、models、input、output 和 download cache 目录，但不创建这些目录。`deploy.sh` 当前只管理 Docker Compose 目标：`compose-deps` 管理 Docker PostgreSQL / Redis；`compose-full` 管理 Docker API / PostgreSQL / Redis，并通过 `start-api.sh` 作为 API 容器入口。`run.sh` 当前提供日常本地开发 recipe：`dev` 表示日常开发环境全集，`up dev` 固定顺序是 `deploy.sh up compose-deps`、`dev.sh migrate`、`dev.sh start api`、`dev.sh status`；`status dev` 汇总宿主机 API 状态和 compose-deps 状态。`remote.sh` 当前提供 macOS 到远端 GPU host 的 `status`、`logs` 和 `tunnel` 辅助，可从 CLI、环境变量、`.env`、`ENV_FILE` 或 `--profile` 读取 `REMOTE_HOST`、`REMOTE_DIR` 和 tunnel 端口；CLI 参数优先级最高，未配置远端地址时直接报错，不猜 hostname，不同步 `.env`，不管理 ComfyUI instance 生命周期。三种管理方式分别是：日常入口 `run.sh up|status|down|restart|check dev`；单进程入口 `dev.sh start|status|stop api`；Docker 入口 `deploy.sh up|status|down compose-deps|compose-full`。`verify.sh check` 当前覆盖 env、syntax、registry、alembic、scripts、`comfyctl` smoke 和 pytest；`postgres` 与 `migration-roundtrip` 是显式 PostgreSQL gate。`tools.sh` 当前提供无默认持久副作用的 secret 和 env URL 生成工具。
 
 ## Verification Baseline
 

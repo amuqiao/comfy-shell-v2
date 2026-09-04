@@ -72,3 +72,5 @@ kubectl exec -it <api-pod> -- ./scripts/k8s.sh check
 | `./scripts/dev.sh start|status|stop api` | Precise host API process management; `status` also prints effective Comfy data directories. |
 | `./scripts/deploy.sh up|status|down compose-deps|compose-full` | Explicit Docker dependencies or full Docker Compose API/dependencies. |
 | `./scripts/remote.sh status|logs|tunnel` | Remote GPU host inspection and SSH tunnel helper. Reads `REMOTE_*` from CLI, environment, `.env`, `ENV_FILE`, or `--profile`; it does not guess hostnames. |
+
+`./scripts/run.sh up dev` is the daily application entry. It runs `deploy.sh up compose-deps`, then `dev.sh migrate`, then `dev.sh start api`, then `dev.sh status`. Operators should not need to manually remember the database migration step for normal use; `dev.sh migrate` remains available for targeted debugging.
