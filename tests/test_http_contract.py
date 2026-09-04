@@ -212,6 +212,13 @@ def test_openapi_exposes_route_contract(app):
     assert status_instance["operationId"] == "status_instance"
     assert "requestBody" not in status_instance
 
+    launch_config = schema["paths"]["/v1/instances/{instance_id}/launch-config"]["patch"]
+    assert launch_config["operationId"] == "update_instance_launch_config"
+    assert launch_config["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/InstanceLaunchConfigUpdateRequest"
+    )
+    assert "409" in launch_config["responses"]
+
     catalog = schema["paths"]["/v1/catalog"]["get"]
     assert catalog["operationId"] == "get_comfy_catalog"
     assert catalog["security"]

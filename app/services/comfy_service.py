@@ -20,6 +20,7 @@ from app.schemas.comfy import (
     HostResponse,
     InstanceCreateRequest,
     InstanceInstallRequest,
+    InstanceLaunchConfigUpdateRequest,
     InstanceListResponse,
     InstanceLogsResponse,
     InstanceReadyResponse,
@@ -141,22 +142,22 @@ class ComfyService:
     def get_catalog(self) -> ComfyCatalogResponse:
         return ComfyCatalogResponse(**catalog_payload())
 
-    def _resolve_comfy_ref(self, data: InstanceCreateRequest) -> str:
-        if data.comfy_version_id is not None and data.comfy_ref is not None:
+    def _resolve_comfy_ref(self, *, comfy_version_id: str | None, comfy_ref: str | None) -> str:
+        if comfy_version_id is not None and comfy_ref is not None:
             raise AppError(
                 "REQUEST_INVALID",
                 details={"field": "comfy_ref", "message": "comfy_version_id and comfy_ref cannot be used together"},
             )
-        if data.comfy_version_id is not None:
+        if comfy_version_id is not None:
             try:
-                return str(version_by_id(data.comfy_version_id)["ref"])
+                return str(version_by_id(comfy_version_id)["ref"])
             except KeyError as exc:
                 raise AppError(
                     "REQUEST_INVALID",
-                    details={"field": "comfy_version_id", "message": f"unknown comfy_version_id: {data.comfy_version_id}"},
+                    details={"field": "comfy_version_id", "message": f"unknown comfy_version_id: {comfy_version_id}"},
                 ) from exc
-        if data.comfy_ref is not None:
-            return data.comfy_ref
+        if comfy_ref is not None:
+            return comfy_ref
         if self._settings.comfy.default_ref:
             return self._settings.comfy.default_ref
         return str(default_version()["ref"])
@@ -297,7 +298,7 @@ class ComfyService:
                 model_root = await uow.model_roots.get(model_root_id)
                 if model_root is None or model_root.host_id != data.host_id:
                     raise AppError("MODEL_ROOT_NOT_FOUND", details={"model_root_id": model_root_id})
-            comfy_ref = self._resolve_comfy_ref(data)
+            comfy_ref = self._resolve_comfy_ref(comfy_version_id=data.comfy_version_id, comfy_ref=data.comfy_ref)
             python_version, torch_profile = self._resolve_runtime(data)
             instance = await uow.instances.create(
                 host_id=data.host_id,
@@ -313,6 +314,73 @@ class ComfyService:
             await uow.instances.set_model_roots(instance_id=instance.id, model_root_ids=model_root_ids)
             await uow.commit()
             return instance_to_response(instance, data_root=host.data_root, model_root_ids=model_root_ids)
+
+    async def _status_payload(self, host: Host, instance: Instance) -> dict[str, Any]:
+        payload, _result = await self._ctl.run(
+            [
+                "instance",
+                "status",
+                "--id",
+                instance.id,
+                "--slug",
+                instance.instance_slug,
+                "--data-root",
+                host.data_root,
+                "--host",
+                self._settings.comfy.bind_host,
+                "--port",
+                str(instance.comfy_port),
+                "--json",
+            ]
+        )
+        if not payload.get("ok"):
+            raise AppError(str(payload.get("error_code", "COMFYCTL_FAILED")), details=payload)
+        return payload
+
+    async def update_instance_launch_config(
+        self, instance_id: str, data: InstanceLaunchConfigUpdateRequest
+    ) -> InstanceResponse:
+        if not data.model_fields_set:
+            raise AppError("REQUEST_INVALID", details={"message": "at least one launch config field is required"})
+        for field in ("comfy_port", "gpu_ids", "model_root_ids"):
+            if field in data.model_fields_set and getattr(data, field) is None:
+                raise AppError("REQUEST_INVALID", details={"field": field, "message": "null is not allowed"})
+        host, instance, current_model_root_ids, _model_roots = await self._instance_context(instance_id)
+        status_payload = await self._status_payload(host, instance)
+        status_data = dict(status_payload.get("data", {}))
+        if status_data.get("process_alive") is True:
+            raise AppError("INSTANCE_RUNNING", details={"instance_id": instance.id, "layer": "process"})
+
+        final_model_root_ids = data.model_root_ids if "model_root_ids" in data.model_fields_set else current_model_root_ids
+        if "primary_model_root_id" in data.model_fields_set:
+            final_primary_model_root_id = data.primary_model_root_id
+        else:
+            final_primary_model_root_id = instance.primary_model_root_id
+            if final_primary_model_root_id is not None and final_primary_model_root_id not in final_model_root_ids:
+                final_primary_model_root_id = final_model_root_ids[0] if final_model_root_ids else None
+        if final_primary_model_root_id is not None and final_primary_model_root_id not in final_model_root_ids:
+            raise AppError("MODEL_ROOT_NOT_FOUND", details={"model_root_id": final_primary_model_root_id})
+
+        async with self._uow_factory() as uow:
+            assert uow.hosts is not None
+            assert uow.instances is not None
+            assert uow.model_roots is not None
+            current = await uow.instances.get(instance.id)
+            if current is None:
+                raise AppError("INSTANCE_NOT_FOUND", details={"instance_id": instance.id})
+            for model_root_id in final_model_root_ids:
+                model_root = await uow.model_roots.get(model_root_id)
+                if model_root is None or model_root.host_id != host.id:
+                    raise AppError("MODEL_ROOT_NOT_FOUND", details={"model_root_id": model_root_id})
+            await uow.instances.update_launch_config(
+                instance_id=instance.id,
+                comfy_port=data.comfy_port if data.comfy_port is not None else instance.comfy_port,
+                gpu_ids=data.gpu_ids if data.gpu_ids is not None else list(instance.gpu_ids),
+                primary_model_root_id=final_primary_model_root_id,
+            )
+            await uow.instances.set_model_roots(instance_id=instance.id, model_root_ids=final_model_root_ids)
+            await uow.commit()
+        return await self.get_instance(instance.id)
 
     async def _instance_context(self, instance_id: str) -> tuple[Host, Instance, list[str], list[ModelRoot]]:
         async with self._uow_factory() as uow:
@@ -400,7 +468,11 @@ class ComfyService:
 
     async def install_instance(self, instance_id: str, data: InstanceInstallRequest, *, kind: str = "install") -> RunResponse:
         host, instance, _model_root_ids, _model_roots = await self._instance_context(instance_id)
-        comfy_ref = data.comfy_ref or instance.comfy_ref
+        comfy_ref = (
+            self._resolve_comfy_ref(comfy_version_id=data.comfy_version_id, comfy_ref=data.comfy_ref)
+            if data.comfy_version_id is not None or data.comfy_ref is not None
+            else instance.comfy_ref
+        )
         run_id = await self._record_run(host_id=host.id, instance_id=instance.id, kind=kind)
         payload, _result = await self._run_recorded(
             run_id=run_id,
@@ -492,25 +564,7 @@ class ComfyService:
 
     async def status_instance(self, instance_id: str) -> InstanceStatusResponse:
         host, instance, _model_root_ids, _model_roots = await self._instance_context(instance_id)
-        payload, _result = await self._ctl.run(
-            [
-                "instance",
-                "status",
-                "--id",
-                instance.id,
-                "--slug",
-                instance.instance_slug,
-                "--data-root",
-                host.data_root,
-                "--host",
-                self._settings.comfy.bind_host,
-                "--port",
-                str(instance.comfy_port),
-                "--json",
-            ]
-        )
-        if not payload.get("ok"):
-            raise AppError(str(payload.get("error_code", "COMFYCTL_FAILED")), details=payload)
+        payload = await self._status_payload(host, instance)
         return InstanceStatusResponse(
             ok=bool(payload.get("ok")),
             instance_id=instance.id,

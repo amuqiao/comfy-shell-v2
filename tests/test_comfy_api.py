@@ -24,6 +24,7 @@ def test_comfy_single_host_flow(sqlite_app):
         assert catalog.status_code == 200
         catalog_data = catalog.json()["data"]
         assert catalog_data["versions"][0]["id"] == "comfyui-0.27.0-verified"
+        assert catalog_data["versions"][0]["source_type"] == "snapshot"
         assert catalog_data["runtime_profiles"][0]["id"] == "nvidia-cu124-py312-torch260"
 
         hosts = client.get("/v1/hosts", headers=auth_headers())
@@ -45,6 +46,7 @@ def test_comfy_single_host_flow(sqlite_app):
         assert "gpus" in probe_data
         assert "comfy_ref" in probe_data["runtime_recommendation"]
         assert "version_id" in probe_data["runtime_recommendation"]
+        assert "version_source_type" in probe_data["runtime_recommendation"]
         assert "runtime_profile_id" in probe_data["runtime_recommendation"]
         assert probe_data["runtime_recommendation"]["python_version"] == "3.12"
         assert probe_data["runtime_recommendation"]["torch_profile"] in {"requirements", "cu124"}
@@ -73,6 +75,16 @@ def test_comfy_single_host_flow(sqlite_app):
         fetched = client.get(f"/v1/instances/{instance['id']}", headers=auth_headers())
         assert fetched.status_code == 200
         assert fetched.json()["data"]["id"] == instance["id"]
+
+        updated = client.patch(
+            f"/v1/instances/{instance['id']}/launch-config",
+            json={"comfy_port": free_port(), "gpu_ids": ["0"]},
+            headers=auth_headers(),
+        )
+        assert updated.status_code == 200
+        updated_instance = updated.json()["data"]
+        assert updated_instance["comfy_port"] != 8188
+        assert updated_instance["gpu_ids"] == ["0"]
 
         listed = client.get("/v1/instances", headers=auth_headers())
         assert listed.status_code == 200
@@ -206,6 +218,198 @@ def test_create_instance_defaults_to_verified_catalog_version(sqlite_app):
     assert data["comfy_ref"] == "8b099de36acd81acd1afa3b5442951dc847e0a52"
     assert data["python_version"] == "3.12"
     assert data["torch_profile"] == "requirements"
+
+
+def test_update_instance_launch_config_changes_port_gpu_and_model_root(sqlite_app, tmp_path):
+    first_models = tmp_path / "first-models"
+    second_models = tmp_path / "second-models"
+    first_models.mkdir()
+    second_models.mkdir()
+    with TestClient(sqlite_app) as client:
+        host = client.post(
+            "/v1/hosts",
+            json={"name": "launch-host", "connection": "local", "data_root": str(tmp_path)},
+            headers=auth_headers(),
+        ).json()["data"]
+        first_root = client.post(
+            "/v1/model-roots",
+            json={"host_id": host["id"], "label": "First", "path": str(first_models)},
+            headers=auth_headers(),
+        ).json()["data"]
+        second_root = client.post(
+            "/v1/model-roots",
+            json={"host_id": host["id"], "label": "Second", "path": str(second_models)},
+            headers=auth_headers(),
+        ).json()["data"]
+        instance = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Launch",
+                "instance_slug": "launch",
+                "comfy_ref": "master",
+                "comfy_port": 8188,
+                "model_root_ids": [first_root["id"]],
+            },
+            headers=auth_headers(),
+        ).json()["data"]
+
+        response = client.patch(
+            f"/v1/instances/{instance['id']}/launch-config",
+            json={
+                "comfy_port": free_port(),
+                "gpu_ids": ["0", "1"],
+                "model_root_ids": [second_root["id"]],
+                "primary_model_root_id": second_root["id"],
+            },
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["comfy_port"] != 8188
+    assert data["gpu_ids"] == ["0", "1"]
+    assert data["model_root_ids"] == [second_root["id"]]
+    assert data["primary_model_root_id"] == second_root["id"]
+
+
+def test_update_instance_launch_config_rejects_foreign_model_root(sqlite_app, tmp_path):
+    with TestClient(sqlite_app) as client:
+        host = client.post(
+            "/v1/hosts",
+            json={"name": "main-host", "connection": "local", "data_root": str(tmp_path / "main")},
+            headers=auth_headers(),
+        ).json()["data"]
+        foreign_host = client.post(
+            "/v1/hosts",
+            json={"name": "foreign-host", "connection": "local", "data_root": str(tmp_path / "foreign")},
+            headers=auth_headers(),
+        ).json()["data"]
+        foreign_root = client.post(
+            "/v1/model-roots",
+            json={"host_id": foreign_host["id"], "label": "Foreign", "path": str(tmp_path / "foreign-models")},
+            headers=auth_headers(),
+        ).json()["data"]
+        instance = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Launch",
+                "instance_slug": "launch",
+                "comfy_ref": "master",
+                "comfy_port": 8188,
+            },
+            headers=auth_headers(),
+        ).json()["data"]
+
+        response = client.patch(
+            f"/v1/instances/{instance['id']}/launch-config",
+            json={"model_root_ids": [foreign_root["id"]]},
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "MODEL_ROOT_NOT_FOUND"
+
+
+def test_update_instance_launch_config_rejects_duplicate_model_roots(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        model_root = client.get("/v1/model-roots", params={"host_id": host["id"]}, headers=auth_headers()).json()["data"][
+            "model_roots"
+        ][0]
+        instance = client.post(
+            "/v1/instances",
+            json={"host_id": host["id"], "name": "Duplicate Root", "instance_slug": "duplicate-root", "comfy_ref": "master"},
+            headers=auth_headers(),
+        ).json()["data"]
+
+        response = client.patch(
+            f"/v1/instances/{instance['id']}/launch-config",
+            json={"model_root_ids": [model_root["id"], model_root["id"]]},
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+
+
+def test_create_instance_rejects_duplicate_model_roots(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        model_root = client.get("/v1/model-roots", params={"host_id": host["id"]}, headers=auth_headers()).json()["data"][
+            "model_roots"
+        ][0]
+
+        response = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Duplicate Root Create",
+                "instance_slug": "duplicate-root-create",
+                "comfy_ref": "master",
+                "model_root_ids": [model_root["id"], model_root["id"]],
+            },
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+
+
+def test_update_instance_launch_config_requires_a_field(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        instance = client.post(
+            "/v1/instances",
+            json={"host_id": host["id"], "name": "Empty", "instance_slug": "empty", "comfy_ref": "master"},
+            headers=auth_headers(),
+        ).json()["data"]
+
+        response = client.patch(f"/v1/instances/{instance['id']}/launch-config", json={}, headers=auth_headers())
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+
+
+def test_install_request_rejects_catalog_and_raw_field_mix(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        instance = client.post(
+            "/v1/instances",
+            json={"host_id": host["id"], "name": "Install Mixed", "instance_slug": "install-mixed", "comfy_ref": "master"},
+            headers=auth_headers(),
+        ).json()["data"]
+
+        response = client.post(
+            f"/v1/instances/{instance['id']}/install",
+            json={"comfy_version_id": "comfyui-0.27.0-verified", "comfy_ref": "master"},
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+    assert response.json()["details"]["field"] == "comfy_ref"
+
+
+def test_reinstall_request_rejects_unknown_catalog_id(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        instance = client.post(
+            "/v1/instances",
+            json={"host_id": host["id"], "name": "Reinstall Unknown", "instance_slug": "reinstall-unknown", "comfy_ref": "master"},
+            headers=auth_headers(),
+        ).json()["data"]
+
+        response = client.post(
+            f"/v1/instances/{instance['id']}/reinstall",
+            json={"comfy_version_id": "missing-version"},
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+    assert response.json()["details"]["field"] == "comfy_version_id"
 
 
 def test_create_host_rejects_ssh_in_p1(sqlite_app):

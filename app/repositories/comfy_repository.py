@@ -154,6 +154,25 @@ class InstanceRepository:
             .values(comfy_ref=comfy_ref, resolved_commit=resolved_commit, updated_at=utc_now())
         )
 
+    async def update_launch_config(
+        self,
+        *,
+        instance_id: str,
+        comfy_port: int,
+        gpu_ids: list[str],
+        primary_model_root_id: str | None,
+    ) -> None:
+        await self._session.execute(
+            update(Instance)
+            .where(Instance.id == instance_id)
+            .values(
+                comfy_port=comfy_port,
+                gpu_ids=gpu_ids,
+                primary_model_root_id=primary_model_root_id,
+                updated_at=utc_now(),
+            )
+        )
+
     async def mark_launched(self, *, instance_id: str) -> None:
         now = utc_now()
         await self._session.execute(

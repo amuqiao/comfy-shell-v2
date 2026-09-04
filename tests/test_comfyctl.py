@@ -161,6 +161,7 @@ def test_runtime_recommendation_prefers_cu124_for_cuda_124():
     assert recommendation["torch_profile"] == "cu124"
     assert recommendation["gpu_ids"] == ["0"]
     assert recommendation["comfy_ref"] == "8b099de36acd81acd1afa3b5442951dc847e0a52"
+    assert recommendation["version_source_type"] == "snapshot"
     assert recommendation["warnings"] == []
 
 
@@ -196,6 +197,7 @@ def test_host_probe_reports_gpu_runtime_recommendation(tmp_path):
         "version_id": "comfyui-0.27.0-verified",
         "version_label": "ComfyUI 0.27.0 verified",
         "version_channel": "stable",
+        "version_source_type": "snapshot",
         "runtime_profile_id": "nvidia-cu124-py312-torch260",
         "runtime_profile_label": "NVIDIA CUDA 12.4 / Python 3.12 / PyTorch 2.6.0",
         "comfy_ref": "8b099de36acd81acd1afa3b5442951dc847e0a52",

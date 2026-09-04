@@ -194,6 +194,26 @@ operation_registry.register(
 )
 operation_registry.register(
     OperationSpec(
+        "update_instance_launch_config",
+        "PATCH",
+        "/instances/{instance_id}/launch-config",
+        200,
+        frozenset(
+            {
+                "INSTANCE_NOT_FOUND",
+                "HOST_NOT_FOUND",
+                "MODEL_ROOT_NOT_FOUND",
+                "COMFYCTL_FAILED",
+                "PID_INVALID",
+                "INSTANCE_RUNNING",
+            }
+        ),
+        request_schema="InstanceLaunchConfigUpdateRequest",
+        response_schema="SuccessEnvelope[InstanceResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
         "install_instance",
         "POST",
         "/instances/{instance_id}/install",

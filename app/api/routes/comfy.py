@@ -15,6 +15,7 @@ from app.schemas.comfy import (
     HostResponse,
     InstanceCreateRequest,
     InstanceInstallRequest,
+    InstanceLaunchConfigUpdateRequest,
     InstanceListResponse,
     InstanceLogsResponse,
     InstanceReadyResponse,
@@ -186,6 +187,25 @@ async def get_instance(
     service: Annotated[ComfyService, Depends(get_comfy_service)],
 ) -> SuccessEnvelope[InstanceResponse]:
     return success_envelope(await service.get_instance(instance_id), request_id=get_request_id(), trace_id=get_trace_id())
+
+
+@router.patch(
+    "/instances/{instance_id}/launch-config",
+    operation_id="update_instance_launch_config",
+    response_model=SuccessEnvelope[InstanceResponse],
+    responses=operation_responses("update_instance_launch_config"),
+)
+async def update_instance_launch_config(
+    instance_id: str,
+    data: InstanceLaunchConfigUpdateRequest,
+    _principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ComfyService, Depends(get_comfy_service)],
+) -> SuccessEnvelope[InstanceResponse]:
+    return success_envelope(
+        await service.update_instance_launch_config(instance_id, data),
+        request_id=get_request_id(),
+        trace_id=get_trace_id(),
+    )
 
 
 @router.post(

@@ -53,9 +53,11 @@ def _validate_catalog(data: dict[str, Any]) -> None:
     for item in versions:
         if not isinstance(item, dict):
             raise ValueError("catalog.versions entries must be objects")
-        for key in ("id", "label", "channel", "ref"):
+        for key in ("id", "label", "channel", "source_type", "ref"):
             if not item.get(key):
                 raise ValueError(f"catalog version missing {key}")
+        if item["source_type"] not in {"release", "snapshot", "branch"}:
+            raise ValueError(f"invalid catalog version source_type: {item['source_type']}")
         if item.get("advanced") is not True:
             visible_version_count += 1
         if item["id"] in version_ids:
@@ -172,6 +174,7 @@ def recommendation(*, cuda_version: str | None, gpus: list[dict[str, str]]) -> d
             "version_id": version["id"],
             "version_label": version["label"],
             "version_channel": version["channel"],
+            "version_source_type": version["source_type"],
             "runtime_profile_id": profile["id"],
             "runtime_profile_label": profile["label"],
             "comfy_ref": version["ref"],

@@ -57,6 +57,7 @@ def _register_defaults() -> None:
         ErrorSpec("MODEL_ROOT_CONFLICT", 409, "Model root already exists.", False, frozenset({"public"})),
         ErrorSpec("INSTANCE_NOT_FOUND", 404, "Instance not found.", False, frozenset({"public"})),
         ErrorSpec("INSTANCE_SLUG_CONFLICT", 409, "Instance slug already exists.", False, frozenset({"public"})),
+        ErrorSpec("INSTANCE_RUNNING", 409, "Instance is running.", False, frozenset({"public"})),
         ErrorSpec("RUN_NOT_FOUND", 404, "Command run not found.", False, frozenset({"public"})),
         ErrorSpec("EXECUTOR_UNSUPPORTED", 422, "Executor mode is not supported.", False, frozenset({"public"})),
         ErrorSpec("COMFYCTL_FAILED", 500, "comfyctl command failed.", False, frozenset({"public"})),

@@ -61,6 +61,7 @@ class ComfyVersionOptionResponse(StrictBaseModel):
     label: str
     display_version: str | None = None
     channel: str
+    source_type: Literal["release", "snapshot", "branch"]
     ref: str
     recommended: bool = False
     verified: bool = False
@@ -156,6 +157,13 @@ class InstanceCreateRequest(StrictBaseModel):
             raise ValueError("gpu_ids must contain at most 16 values")
         return value
 
+    @field_validator("model_root_ids")
+    @classmethod
+    def validate_model_root_ids(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("model_root_ids must be unique")
+        return value
+
     @field_validator("torch_profile")
     @classmethod
     def validate_torch_profile(cls, value: str | None) -> str | None:
@@ -189,8 +197,30 @@ class InstanceListResponse(StrictBaseModel):
 
 
 class InstanceInstallRequest(StrictBaseModel):
+    comfy_version_id: str | None = Field(default=None, max_length=120)
     comfy_ref: str | None = Field(default=None, max_length=255)
     restart: bool = False
+
+
+class InstanceLaunchConfigUpdateRequest(StrictBaseModel):
+    comfy_port: int | None = Field(default=None, ge=1, le=65535)
+    gpu_ids: list[str] | None = None
+    model_root_ids: list[str] | None = None
+    primary_model_root_id: str | None = None
+
+    @field_validator("gpu_ids")
+    @classmethod
+    def validate_gpu_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and len(value) > 16:
+            raise ValueError("gpu_ids must contain at most 16 values")
+        return value
+
+    @field_validator("model_root_ids")
+    @classmethod
+    def validate_model_root_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("model_root_ids must be unique")
+        return value
 
 
 class InstanceStartRequest(StrictBaseModel):

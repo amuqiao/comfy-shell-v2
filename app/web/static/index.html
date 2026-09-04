@@ -310,9 +310,21 @@
         <section>
           <h2>Selected Instance</h2>
           <div class="selected">
-            <div id="selected-instance" class="kv muted"></div>
+            <div class="stack">
+              <div id="selected-instance" class="kv muted"></div>
+              <div class="grid wide">
+                <label
+                  >Reinstall Version
+                  <select id="selected-version"></select>
+                </label>
+                <label>Launch Port <input id="launch-port" type="number" /></label>
+                <label>Launch GPU <input id="launch-gpu" placeholder="0" /></label>
+              </div>
+              <button id="save-launch-config" class="secondary" type="button">Save Launch Config</button>
+            </div>
             <div class="row">
               <button id="install" type="button">Install</button>
+              <button id="reinstall" type="button">Reinstall</button>
               <button id="start" type="button">Start</button>
               <button id="stop" type="button">Stop</button>
               <button id="status" class="secondary" type="button">Status</button>
@@ -349,7 +361,11 @@
       const advancedEnabled = document.querySelector("#advanced-enabled");
       const instanceVersion = document.querySelector("#instance-version");
       const instanceRuntime = document.querySelector("#instance-runtime");
-      const instanceActions = ["install", "start", "stop", "status", "ready", "logs"].map((id) => document.querySelector(`#${id}`));
+      const selectedVersion = document.querySelector("#selected-version");
+      const saveLaunchConfigButton = document.querySelector("#save-launch-config");
+      const instanceActions = ["install", "reinstall", "start", "stop", "status", "ready", "logs"].map((id) =>
+        document.querySelector(`#${id}`),
+      );
 
       function headers() {
         const token = document.querySelector("#token").value.trim();
@@ -419,6 +435,17 @@
         return state.catalog?.runtime_profiles.find((item) => item.id === id) || null;
       }
 
+      function versionByRef(ref) {
+        return state.catalog?.versions.find((item) => item.ref === ref) || null;
+      }
+
+      function sourceLabel(value) {
+        if (value === "release") return "release";
+        if (value === "snapshot") return "snapshot";
+        if (value === "branch") return "branch";
+        return "ref";
+      }
+
       function defaultModelRootPath(host) {
         if (!host) return "";
         return `${host.data_root.replace(/\/+$/, "")}/ComfyUI-Shared/models`;
@@ -430,9 +457,52 @@
 
       function optionText(item) {
         const tags = [];
+        if (item.source_type) tags.push(sourceLabel(item.source_type));
         if (item.verified) tags.push("verified");
         if (item.advanced) tags.push("advanced");
         return `${item.label}${tags.length ? ` (${tags.join(", ")})` : ""}`;
+      }
+
+      function versionText(instance) {
+        const version = versionByRef(instance.comfy_ref);
+        if (version) return `${version.label} (${sourceLabel(version.source_type)})`;
+        return `Custom ref ${shortRef(instance.comfy_ref)}`;
+      }
+
+      function runtimeText(instance) {
+        const runtime = state.catalog?.runtime_profiles.find(
+          (item) => item.python_version === instance.python_version && item.torch_profile === instance.torch_profile,
+        );
+        if (runtime) return runtime.label;
+        return `${instance.python_version} / ${instance.torch_profile}`;
+      }
+
+      function instanceModelRootText(instance) {
+        const ids = new Set(instance.model_root_ids || []);
+        return state.modelRoots
+          .filter((root) => ids.has(root.id))
+          .map((root) => `${root.label}: ${root.path}`)
+          .join("\n");
+      }
+
+      function sshTunnelCommand(instance) {
+        return `ssh -L ${instance.comfy_port}:127.0.0.1:${instance.comfy_port} <user@remote-host>`;
+      }
+
+      function selectedVersionOptions(instance) {
+        const visibleVersions = (state.catalog?.versions || []).filter((item) => !item.advanced);
+        const currentOption = `<option value="__current__">Current: ${escapeHtml(versionText(instance))}</option>`;
+        return [
+          currentOption,
+          ...visibleVersions.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(optionText(item))}</option>`),
+        ].join("");
+      }
+
+      function parseGpuIds(value) {
+        return value
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
       }
 
       function renderCatalogControls() {
@@ -440,9 +510,10 @@
         const currentRuntime = instanceRuntime.value;
         const visibleVersions = (state.catalog?.versions || []).filter((item) => !item.advanced);
         const visibleRuntimes = (state.catalog?.runtime_profiles || []).filter((item) => !item.advanced);
-        instanceVersion.innerHTML = visibleVersions
+        const versionOptions = visibleVersions
           .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(optionText(item))}</option>`)
           .join("");
+        instanceVersion.innerHTML = versionOptions;
         instanceRuntime.innerHTML = visibleRuntimes
           .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(optionText(item))}</option>`)
           .join("");
@@ -494,6 +565,8 @@
         instanceActions.forEach((button) => {
           button.disabled = state.busy || !hasInstance;
         });
+        saveLaunchConfigButton.disabled = state.busy || !hasInstance || !document.querySelector("#launch-port").value;
+        selectedVersion.disabled = state.busy || !hasInstance;
         modelPathInput.placeholder = hasHost ? defaultModelRootPath(selectedHost()) : "";
         if (hasHost && !modelPathInput.value) {
           modelPathInput.value = defaultModelRootPath(selectedHost());
@@ -543,7 +616,7 @@
               `<div><strong>Driver</strong><span>${escapeHtml(probe?.driver_version || "unknown")}</span></div>`,
               `<div><strong>CUDA</strong><span>${escapeHtml(probe?.cuda_version || "unknown")}</span></div>`,
               `<div><strong>GPU</strong><span>${escapeHtml(gpus.map((gpu) => `${gpu.index}: ${gpu.name}`).join(", ") || "none")}</span></div>`,
-              `<div><strong>Version</strong><span>${escapeHtml(recommendation?.version_label || "pending")}</span></div>`,
+              `<div><strong>Version</strong><span>${escapeHtml(recommendation?.version_label || "pending")} (${escapeHtml(sourceLabel(recommendation?.version_source_type))})</span></div>`,
               `<div><strong>Runtime</strong><span>${escapeHtml(recommendation?.runtime_profile_label || "pending")}</span></div>`,
               `<div><strong>GPU IDs</strong><span>${escapeHtml(gpuIds || "none")}</span></div>`,
               `<div><strong>Reason</strong><span>${escapeHtml(recommendation?.reason || "pending")}</span></div>`,
@@ -562,13 +635,28 @@
 
       function renderSelectedInstance() {
         const item = selectedInstance();
+        const version = item ? versionByRef(item.comfy_ref) : null;
+        const modelRoots = item ? instanceModelRootText(item) : "";
+        if (item) {
+          selectedVersion.innerHTML = selectedVersionOptions(item);
+          selectedVersion.value = "__current__";
+          document.querySelector("#launch-port").value = item.comfy_port;
+          document.querySelector("#launch-gpu").value = (item.gpu_ids || []).join(",");
+        } else {
+          selectedVersion.innerHTML = "";
+          document.querySelector("#launch-port").value = "";
+          document.querySelector("#launch-gpu").value = "";
+        }
         document.querySelector("#selected-instance").innerHTML = item
           ? [
               `<div><strong>Name</strong><span>${escapeHtml(item.name)}</span></div>`,
+              `<div><strong>Version</strong><span>${escapeHtml(versionText(item))}</span></div>`,
+              `<div><strong>Ref</strong><span>${escapeHtml(shortRef(item.comfy_ref))}${item.resolved_commit ? ` -> ${escapeHtml(shortRef(item.resolved_commit))}` : ""}</span></div>`,
               `<div><strong>Install</strong><span>${escapeHtml(item.install_root)}</span></div>`,
-              `<div><strong>Runtime</strong><span>${escapeHtml(item.python_version)} / ${escapeHtml(item.torch_profile)}</span></div>`,
-              `<div><strong>Comfy</strong><span>${escapeHtml(shortRef(item.comfy_ref))} | port ${escapeHtml(item.comfy_port)}</span></div>`,
+              `<div><strong>Runtime</strong><span>${escapeHtml(runtimeText(item))}</span></div>`,
+              `<div><strong>Model Roots</strong><span>${escapeHtml(modelRoots || "none")}</span></div>`,
               `<div><strong>Open</strong><span><a href="http://127.0.0.1:${escapeHtml(item.comfy_port)}/" target="_blank" rel="noreferrer">http://127.0.0.1:${escapeHtml(item.comfy_port)}/</a></span></div>`,
+              `<div><strong>SSH Tunnel</strong><span>${escapeHtml(sshTunnelCommand(item))}</span></div>`,
             ].join("")
           : "";
       }
@@ -583,7 +671,7 @@
               <strong>${escapeHtml(item.name)}</strong>
               <div class="muted">
                 <span class="pill">${escapeHtml(item.instance_slug)}</span>
-                ${escapeHtml(shortRef(item.comfy_ref))} | ${escapeHtml(item.python_version)} / ${escapeHtml(item.torch_profile)} | port ${escapeHtml(item.comfy_port)}
+                ${escapeHtml(versionText(item))} | ${escapeHtml(runtimeText(item))} | port ${escapeHtml(item.comfy_port)}
               </div>
               <div class="muted">${escapeHtml(item.install_root)}</div>
             </div>`,
@@ -692,11 +780,7 @@
             name: document.querySelector("#instance-name").value,
             instance_slug: document.querySelector("#instance-slug").value,
             comfy_port: Number(document.querySelector("#instance-port").value),
-            gpu_ids: document
-              .querySelector("#instance-gpu")
-              .value.split(",")
-              .map((item) => item.trim())
-              .filter(Boolean),
+            gpu_ids: parseGpuIds(document.querySelector("#instance-gpu").value),
             model_root_ids: state.modelRoots.map((item) => item.id),
           };
           if (advancedEnabled.checked) {
@@ -714,14 +798,34 @@
           await loadHostResources(state.selectedHostId);
         });
       });
-      for (const action of ["install", "start", "stop"]) {
+      document.querySelector("#save-launch-config").addEventListener("click", async () => {
+        await withBusy(async () => {
+          if (!selectedInstance()) {
+            show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
+            return;
+          }
+          await request(`/instances/${state.selectedInstanceId}/launch-config`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              comfy_port: Number(document.querySelector("#launch-port").value),
+              gpu_ids: parseGpuIds(document.querySelector("#launch-gpu").value),
+            }),
+          });
+          await loadHostResources(state.selectedHostId);
+        });
+      });
+      for (const action of ["install", "reinstall", "start", "stop"]) {
         document.querySelector(`#${action}`).addEventListener("click", async () => {
           await withBusy(async () => {
             if (!selectedInstance()) {
               show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
               return;
             }
-            await request(`/instances/${state.selectedInstanceId}/${action}`, { method: "POST", body: JSON.stringify({}) });
+            const body =
+              action === "reinstall" && selectedVersion.value !== "__current__"
+                ? { comfy_version_id: selectedVersion.value }
+                : {};
+            await request(`/instances/${state.selectedInstanceId}/${action}`, { method: "POST", body: JSON.stringify(body) });
             await loadHostResources(state.selectedHostId);
           });
         });

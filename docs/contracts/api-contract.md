@@ -56,6 +56,7 @@
 | `list_instances` | `GET /v1/instances` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID` |
 | `create_instance` | `POST /v1/instances` | yes | `201` | `UNAUTHORIZED`, `REQUEST_INVALID`, `HOST_NOT_FOUND`, `MODEL_ROOT_NOT_FOUND`, `INSTANCE_SLUG_CONFLICT` |
 | `get_instance` | `GET /v1/instances/{instance_id}` | yes | `200` | `UNAUTHORIZED`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND` |
+| `update_instance_launch_config` | `PATCH /v1/instances/{instance_id}/launch-config` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `MODEL_ROOT_NOT_FOUND`, `COMFYCTL_FAILED`, `PID_INVALID`, `INSTANCE_RUNNING` |
 | `install_instance` | `POST /v1/instances/{instance_id}/install` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_LOCKED`, `DEPENDENCY_MISSING`, `GIT_FAILED`, `UV_FAILED`, `PYTHON_DEPENDENCY_FAILED` |
 | `reinstall_instance` | `POST /v1/instances/{instance_id}/reinstall` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_LOCKED`, `DEPENDENCY_MISSING`, `GIT_FAILED`, `UV_FAILED`, `PYTHON_DEPENDENCY_FAILED` |
 | `start_instance` | `POST /v1/instances/{instance_id}/start` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_NOT_INSTALLED`, `VENV_MISSING`, `PROCESS_START_FAILED` |
@@ -110,6 +111,7 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
       "label": "ComfyUI 0.27.0 verified",
       "display_version": "0.27.0",
       "channel": "stable",
+      "source_type": "snapshot",
       "ref": "8b099de36acd81acd1afa3b5442951dc847e0a52",
       "recommended": true,
       "verified": true,
@@ -181,6 +183,7 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
       "version_id": "comfyui-0.27.0-verified",
       "version_label": "ComfyUI 0.27.0 verified",
       "version_channel": "stable",
+      "version_source_type": "snapshot",
       "runtime_profile_id": "nvidia-cu124-py312-torch260",
       "runtime_profile_label": "NVIDIA CUDA 12.4 / Python 3.12 / PyTorch 2.6.0",
       "comfy_ref": "8b099de36acd81acd1afa3b5442951dc847e0a52",
@@ -214,6 +217,10 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
 混用；`runtime_profile_id` 不能和 `python_version` 或 `torch_profile` 混用。服务入库时仍保存解析后的
 `comfy_ref`、`python_version`、`torch_profile`。
 
+`comfy_port` 是实例的启动端口初始值；创建实例后如果端口冲突或需要换端口，调用
+`PATCH /v1/instances/{instance_id}/launch-config` 修改。实例身份由 `host_id + instance_slug` 和
+`install_root` 决定，修改启动端口不会移动安装目录。
+
 `torch_profile` 当前支持 `requirements` 和 `cu124`。`requirements` 完全跟随 ComfyUI 的 requirements；`cu124`
 会先使用 `uv pip install --torch-backend cu124` 安装已固定的 CUDA 12.4 版本组：
 `torch==2.6.0+cu124`、`torchvision==0.21.0+cu124`、`torchaudio==2.6.0+cu124`，再安装过滤掉这三个包的
@@ -225,12 +232,28 @@ ComfyUI requirements。这样 torch 生态绑定已验证的 CUDA 12.4 wheel，�
 
 ```json
 {
-  "comfy_ref": "v0.3.50",
+  "comfy_version_id": "comfyui-0.27.0-verified",
   "restart": false
 }
 ```
 
+普通调用方应传 `comfy_version_id`。高级调用方可以改传 `comfy_ref`，但不能同时传 `comfy_version_id`。
 When `restart=true`, the control plane starts the instance after a successful install/reinstall and records a separate `start` run. The install/reinstall response still returns the install/reinstall run.
+
+`PATCH /v1/instances/{instance_id}/launch-config`:
+
+```json
+{
+  "comfy_port": 8189,
+  "gpu_ids": ["0"],
+  "model_root_ids": ["uuid"],
+  "primary_model_root_id": "uuid"
+}
+```
+
+该接口只修改下一次启动使用的端口、GPU 和模型目录绑定，不重装 ComfyUI，也不改变实例 slug 或安装目录。
+字段缺失表示不修改；`comfy_port`、`gpu_ids`、`model_root_ids` 显式传 `null` 返回 `REQUEST_INVALID`。
+`primary_model_root_id: null` 表示清空主模型目录。实例运行中返回 `INSTANCE_RUNNING`，调用方需要先 stop，再修改配置。
 
 `POST /v1/instances/{instance_id}/start` and `POST /v1/instances/{instance_id}/stop`:
 
@@ -308,6 +331,7 @@ Run response data:
 | `MODEL_ROOT_CONFLICT` | 409 | no |
 | `INSTANCE_NOT_FOUND` | 404 | no |
 | `INSTANCE_SLUG_CONFLICT` | 409 | no |
+| `INSTANCE_RUNNING` | 409 | no |
 | `RUN_NOT_FOUND` | 404 | no |
 | `EXECUTOR_UNSUPPORTED` | 422 | no |
 | `COMFYCTL_FAILED` | 500 | no |
