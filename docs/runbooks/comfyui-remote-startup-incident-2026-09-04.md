@@ -232,4 +232,5 @@ curl -sS -H 'Authorization: Bearer <service_api_key>' \
 - 不要把 `master` 作为所有 GPU 环境的隐式默认。默认 ref 必须能和推荐 torch profile 一起启动。
 - `runtime_recommendation` 只能作为创建实例的输入建议，不应在 install 阶段隐式覆盖已落库实例参数。
 - 对于远端 GitHub 网络慢的问题，优先通过 `.env` 的 `COMFY__REPO_URL` 选择可达仓库或本地 mirror，不在代码里硬编码第三方代理。
+- 对于远端 PyPI 或 PyTorch wheel 下载慢的问题，优先通过 `.env` 的 `COMFY__PYTHON_INDEX_URL`、`COMFY__TORCH_INDEX_URL` 或 `COMFY__TORCH_FIND_LINKS_URL` 选择远端可达镜像源；不要把地区性镜像硬编码为全局默认。镜像是 wheel 目录时使用 `COMFY__TORCH_FIND_LINKS_URL`，不要误填进 `COMFY__TORCH_INDEX_URL`。
 - 任何启动失败都要保留 `log_path`、`stderr_tail`、`request_id` 和 `trace_id`，不要吞错或降级成“启动中”。

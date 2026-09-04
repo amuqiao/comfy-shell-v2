@@ -57,6 +57,7 @@ Usage:
   start/restart 会启动本地后台进程，并拒绝占用中的 API_PORT。
   stop 会停止本脚本 PID 文件记录的 API 进程。
   start/stop/restart/status 只管理本地 API，不启动或停止 Docker PostgreSQL/Redis。
+  start/stop/restart/status 不启动或停止 ComfyUI 实例；实例生命周期请在 Web UI 或 Web API 中显式操作。
   migrate 会写入 DATABASE__URL 指向的数据库，执行前会拒绝明显非本地 URL。
   doctor/status/ports 不修改服务状态；status 只展示 Comfy 数据目录，不创建目录。
 
@@ -371,6 +372,7 @@ status_api() {
   row "docs" "configured" "$API_DOCS_URL"
   row "openapi" "configured" "$API_OPENAPI_URL"
   row "health" "configured" "$API_HEALTH_URL"
+  row "instances" "separate" "managed from $API_UI_URL or Web API; dev.sh/run.sh do not stop ComfyUI"
   row "pid_file" "path" "$API_PID_FILE"
   row "log_file" "path" "$API_LOG_FILE"
   local owner

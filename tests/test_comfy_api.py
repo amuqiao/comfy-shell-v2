@@ -1,4 +1,6 @@
 import socket
+import subprocess
+import sys
 
 from fastapi.testclient import TestClient
 
@@ -16,6 +18,22 @@ def free_port() -> int:
 def write_executable(path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
+
+
+def spawn_owned_instance_process(tmp_path, slug: str) -> subprocess.Popen[str]:
+    checkout = tmp_path / "ComfyUI-Installs" / slug / "ComfyUI"
+    run_dir = tmp_path / "ComfyUI-Installs" / slug / ".run"
+    checkout.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)", "main.py"],
+        cwd=checkout,
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    (run_dir / "comfyui.pid").write_text(str(process.pid), encoding="utf-8")
+    return process
 
 
 def test_comfy_single_host_flow(sqlite_app):
@@ -370,6 +388,128 @@ def test_update_instance_launch_config_requires_a_field(sqlite_app):
 
     assert response.status_code == 422
     assert response.json()["code"] == "REQUEST_INVALID"
+
+
+def test_install_rejects_running_instance(sqlite_app, tmp_path):
+    process = spawn_owned_instance_process(tmp_path, "running-install")
+    try:
+        with TestClient(sqlite_app) as client:
+            host = client.post(
+                "/v1/hosts",
+                json={"name": "running-host", "connection": "local", "data_root": str(tmp_path)},
+                headers=auth_headers(),
+            ).json()["data"]
+            instance = client.post(
+                "/v1/instances",
+                json={
+                    "host_id": host["id"],
+                    "name": "Running Install",
+                    "instance_slug": "running-install",
+                    "comfy_ref": "master",
+                    "comfy_port": free_port(),
+                },
+                headers=auth_headers(),
+            ).json()["data"]
+
+            status = client.get(f"/v1/instances/{instance['id']}/status", headers=auth_headers())
+            response = client.post(f"/v1/instances/{instance['id']}/install", json={}, headers=auth_headers())
+
+        assert status.status_code == 200
+        assert status.json()["data"]["data"]["process_alive"] is True
+        assert response.status_code == 409
+        assert response.json()["code"] == "INSTANCE_RUNNING"
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
+def test_reinstall_rejects_running_instance(sqlite_app, tmp_path):
+    process = spawn_owned_instance_process(tmp_path, "running-reinstall")
+    try:
+        with TestClient(sqlite_app) as client:
+            host = client.post(
+                "/v1/hosts",
+                json={"name": "running-host-reinstall", "connection": "local", "data_root": str(tmp_path)},
+                headers=auth_headers(),
+            ).json()["data"]
+            instance = client.post(
+                "/v1/instances",
+                json={
+                    "host_id": host["id"],
+                    "name": "Running Reinstall",
+                    "instance_slug": "running-reinstall",
+                    "comfy_ref": "master",
+                    "comfy_port": free_port(),
+                },
+                headers=auth_headers(),
+            ).json()["data"]
+
+            status = client.get(f"/v1/instances/{instance['id']}/status", headers=auth_headers())
+            response = client.post(f"/v1/instances/{instance['id']}/reinstall", json={}, headers=auth_headers())
+
+        assert status.status_code == 200
+        assert status.json()["data"]["data"]["process_alive"] is True
+        assert response.status_code == 409
+        assert response.json()["code"] == "INSTANCE_RUNNING"
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
+def test_install_rejects_invalid_pid_file(sqlite_app, tmp_path):
+    with TestClient(sqlite_app) as client:
+        host = client.post(
+            "/v1/hosts",
+            json={"name": "invalid-pid-host", "connection": "local", "data_root": str(tmp_path)},
+            headers=auth_headers(),
+        ).json()["data"]
+        instance = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Invalid PID",
+                "instance_slug": "invalid-pid",
+                "comfy_ref": "master",
+                "comfy_port": free_port(),
+            },
+            headers=auth_headers(),
+        ).json()["data"]
+        pid_file = tmp_path / "ComfyUI-Installs" / "invalid-pid" / ".run" / "comfyui.pid"
+        pid_file.parent.mkdir(parents=True)
+        pid_file.write_text("not-a-pid", encoding="utf-8")
+
+        response = client.post(f"/v1/instances/{instance['id']}/install", json={}, headers=auth_headers())
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "PID_INVALID"
+
+
+def test_reinstall_rejects_invalid_pid_file(sqlite_app, tmp_path):
+    with TestClient(sqlite_app) as client:
+        host = client.post(
+            "/v1/hosts",
+            json={"name": "invalid-pid-host-reinstall", "connection": "local", "data_root": str(tmp_path)},
+            headers=auth_headers(),
+        ).json()["data"]
+        instance = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Invalid PID Reinstall",
+                "instance_slug": "invalid-pid-reinstall",
+                "comfy_ref": "master",
+                "comfy_port": free_port(),
+            },
+            headers=auth_headers(),
+        ).json()["data"]
+        pid_file = tmp_path / "ComfyUI-Installs" / "invalid-pid-reinstall" / ".run" / "comfyui.pid"
+        pid_file.parent.mkdir(parents=True)
+        pid_file.write_text("not-a-pid", encoding="utf-8")
+
+        response = client.post(f"/v1/instances/{instance['id']}/reinstall", json={}, headers=auth_headers())
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "PID_INVALID"
 
 
 def test_install_request_rejects_catalog_and_raw_field_mix(sqlite_app):

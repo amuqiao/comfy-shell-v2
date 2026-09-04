@@ -22,6 +22,25 @@ def test_settings_accept_cu124_torch_profile():
     assert settings.comfy.torch_profile == "cu124"
 
 
+def test_settings_accept_comfy_package_index_urls():
+    settings = AppSettings(
+        comfy={
+            "python_index_url": "https://mirrors.aliyun.com/pypi/simple/",
+            "torch_index_url": "https://download.pytorch.org/whl/cu124/",
+            "torch_find_links_url": "https://mirrors.aliyun.com/pytorch-wheels/cu124/",
+        }
+    )
+
+    assert settings.comfy.python_index_url == "https://mirrors.aliyun.com/pypi/simple/"
+    assert settings.comfy.torch_index_url == "https://download.pytorch.org/whl/cu124/"
+    assert settings.comfy.torch_find_links_url == "https://mirrors.aliyun.com/pytorch-wheels/cu124/"
+
+
+def test_settings_reject_invalid_comfy_package_index_url():
+    with pytest.raises(ValidationError, match="COMFY index URL"):
+        AppSettings(comfy={"python_index_url": "mirrors.aliyun.com/pypi/simple/"})
+
+
 def test_release_rejects_placeholder_secret():
     with pytest.raises(ValidationError, match="SECURITY__SERVICE_API_KEY"):
         AppSettings(runtime={"app_env": "prd"}, storage={"backend": "disabled"})

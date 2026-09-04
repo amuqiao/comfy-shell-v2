@@ -137,6 +137,19 @@ def torch_requirements(source: Path, *, torch_profile: str | None = None) -> lis
     return [profile_packages[name] for name in ("torch", "torchvision", "torchaudio")]
 
 
+def index_url_args(index_url: str | None) -> list[str]:
+    if not index_url:
+        return []
+    return ["--index-url", index_url]
+
+
+def package_source_args(*, index_url: str | None, find_links_url: str | None) -> list[str]:
+    args = index_url_args(index_url)
+    if find_links_url:
+        args.extend(["--find-links", find_links_url])
+    return args
+
+
 def installed_torch_versions(python: Path) -> dict[str, str | None]:
     script = (
         "import json\n"
@@ -200,9 +213,17 @@ def process_alive(pid: int) -> bool:
 
 
 def port_open(host: str, port: int, *, timeout: float = 0.5) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(timeout)
-        return sock.connect_ex((host, port)) == 0
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            return sock.connect_ex((host, port)) == 0
+    except OSError as exc:
+        raise CommandFailure(
+            EXIT_RUNTIME,
+            "COMFYCTL_FAILED",
+            f"failed to check port {host}:{port}: {exc}",
+            "process",
+        ) from exc
 
 
 def ensure_port_free(host: str, port: int) -> None:
@@ -236,7 +257,19 @@ def process_cwd(pid: int) -> Path | None:
     try:
         return proc_cwd.resolve(strict=True)
     except OSError:
+        pass
+    if shutil.which("lsof") is None:
         return None
+    result = run_command(["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"])
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        if line.startswith("n"):
+            try:
+                return Path(line[1:]).resolve(strict=True)
+            except OSError:
+                return None
+    return None
 
 
 def process_owned_by_instance(pid: int, paths) -> bool:
@@ -430,6 +463,11 @@ def command_instance_install(args: argparse.Namespace) -> int:
                         "config",
                     )
                 torch_packages = torch_requirements(requirements, torch_profile=args.torch_profile)
+                torch_source_args = package_source_args(
+                    index_url=args.torch_index_url,
+                    find_links_url=args.torch_find_links_url,
+                )
+                torch_backend_args = [] if torch_source_args else ["--torch-backend", torch_backend]
                 torch_install = run_command(
                     [
                         "uv",
@@ -437,8 +475,8 @@ def command_instance_install(args: argparse.Namespace) -> int:
                         "install",
                         "--python",
                         str(venv_python),
-                        "--torch-backend",
-                        torch_backend,
+                        *torch_source_args,
+                        *torch_backend_args,
                         *torch_packages,
                     ]
                 )
@@ -453,7 +491,18 @@ def command_instance_install(args: argparse.Namespace) -> int:
                     )
                 install_requirements = staging_checkout / "requirements-without-torch.txt"
                 write_requirements_without_torch(requirements, install_requirements)
-            install = run_command(["uv", "pip", "install", "--python", str(venv_python), "-r", str(install_requirements)])
+            install = run_command(
+                [
+                    "uv",
+                    "pip",
+                    "install",
+                    "--python",
+                    str(venv_python),
+                    *index_url_args(args.python_index_url),
+                    "-r",
+                    str(install_requirements),
+                ]
+            )
             if install.returncode != 0:
                 raise CommandFailure(
                     EXIT_EXTERNAL,
@@ -597,20 +646,26 @@ def command_instance_status(args: argparse.Namespace) -> int:
     pid_process_alive = process_alive(pid) if pid is not None else False
     pid_owner_valid = process_owned_by_instance(pid, paths) if pid is not None and pid_process_alive else False
     alive = pid_owner_valid
-    listening = port_open(args.host, args.port) if alive else False
+    port_is_open = port_open(args.host, args.port)
+    listening = port_is_open if alive else False
     return success(
         {
             "instance_id": args.id,
             "layer": "process",
             "data": {
                 "install_root": str(paths.root),
+                "manifest_path": str(paths.manifest),
                 "manifest_exists": paths.manifest.exists(),
+                "pid_file": str(paths.pid_file),
                 "pid": pid,
                 "process_alive": alive,
                 "pid_process_alive": pid_process_alive,
                 "pid_owner_valid": pid_owner_valid,
                 "port": args.port,
+                "port_open": port_is_open,
                 "port_listening": listening,
+                "port_in_use_by_other": port_is_open and not alive,
+                "open_url": f"http://127.0.0.1:{args.port}/",
                 "log_path": str(paths.log_file),
             },
         }
@@ -668,6 +723,9 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--ref", required=True)
     install.add_argument("--python", required=True)
     install.add_argument("--torch-profile", required=True)
+    install.add_argument("--python-index-url", default="")
+    install.add_argument("--torch-index-url", default="")
+    install.add_argument("--torch-find-links-url", default="")
     install.add_argument("--json", action="store_true")
     install.set_defaults(func=command_instance_install)
 

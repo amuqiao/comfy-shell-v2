@@ -74,3 +74,5 @@ kubectl exec -it <api-pod> -- ./scripts/k8s.sh check
 | `./scripts/remote.sh status|logs|tunnel` | Remote GPU host inspection and SSH tunnel helper. Reads `REMOTE_*` from CLI, environment, `.env`, `ENV_FILE`, or `--profile`; it does not guess hostnames. |
 
 `./scripts/run.sh up dev` is the daily application entry. It runs `deploy.sh up compose-deps`, then `dev.sh migrate`, then `dev.sh start api`, then `dev.sh status`. Operators should not need to manually remember the database migration step for normal use; `dev.sh migrate` remains available for targeted debugging.
+
+ComfyUI instances have a separate lifecycle from the control plane. Use `/ui/` or the Web API to `Install` / `Start` / `Stop` / `Reinstall` instances. `run.sh down dev` does not stop running ComfyUI processes, so stop instances explicitly before shutting down the control plane.

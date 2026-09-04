@@ -89,6 +89,10 @@ use the IP address or SSH alias that macOS can actually resolve.
 
 Daily service management should use `scripts/run.sh`. It starts Docker dependencies, runs the idempotent Alembic migration, starts the host FastAPI control plane, and prints the service status. `scripts/dev.sh` and `scripts/deploy.sh` remain precise lower-level entries for debugging API processes or Docker services. ComfyUI instance lifecycle is managed through the Web API and `comfyctl`.
 
+`run.sh down dev` stops the control plane and Docker PostgreSQL / Redis only. It does not stop running ComfyUI instances; stop those from `/ui/` or the Web API before shutting down the control plane.
+
+On remote hosts with slow access to PyPI or PyTorch wheels, set `COMFY__PYTHON_INDEX_URL` plus either `COMFY__TORCH_INDEX_URL` for a package index or `COMFY__TORCH_FIND_LINKS_URL` for a wheel directory in the remote `.env`. These values are passed to `uv pip install` during instance install/reinstall; they do not affect existing installed instances until reinstall.
+
 ## Documentation
 
 - Docs index: [`docs/README.md`](docs/README.md)

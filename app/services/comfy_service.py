@@ -468,6 +468,10 @@ class ComfyService:
 
     async def install_instance(self, instance_id: str, data: InstanceInstallRequest, *, kind: str = "install") -> RunResponse:
         host, instance, _model_root_ids, _model_roots = await self._instance_context(instance_id)
+        status_payload = await self._status_payload(host, instance)
+        status_data = dict(status_payload.get("data", {}))
+        if status_data.get("process_alive") is True:
+            raise AppError("INSTANCE_RUNNING", details={"instance_id": instance.id, "layer": "process"})
         comfy_ref = (
             self._resolve_comfy_ref(comfy_version_id=data.comfy_version_id, comfy_ref=data.comfy_ref)
             if data.comfy_version_id is not None or data.comfy_ref is not None
@@ -476,25 +480,11 @@ class ComfyService:
         run_id = await self._record_run(host_id=host.id, instance_id=instance.id, kind=kind)
         payload, _result = await self._run_recorded(
             run_id=run_id,
-            args=[
-                "instance",
-                "install",
-                "--id",
-                instance.id,
-                "--slug",
-                instance.instance_slug,
-                "--data-root",
-                host.data_root,
-                "--repo",
-                self._settings.comfy.repo_url,
-                "--ref",
-                comfy_ref,
-                "--python",
-                instance.python_version,
-                "--torch-profile",
-                instance.torch_profile,
-                "--json",
-            ],
+            args=self._install_args(
+                host=host,
+                instance=instance,
+                comfy_ref=comfy_ref,
+            ),
         )
         if not payload.get("ok"):
             raise AppError(str(payload.get("error_code", "COMFYCTL_FAILED")), details=payload)
@@ -509,6 +499,34 @@ class ComfyService:
         if data.restart:
             await self.start_instance(instance_id)
         return await self.get_run(run_id)
+
+    def _install_args(self, *, host: Host, instance: Instance, comfy_ref: str) -> list[str]:
+        args = [
+            "instance",
+            "install",
+            "--id",
+            instance.id,
+            "--slug",
+            instance.instance_slug,
+            "--data-root",
+            host.data_root,
+            "--repo",
+            self._settings.comfy.repo_url,
+            "--ref",
+            comfy_ref,
+            "--python",
+            instance.python_version,
+            "--torch-profile",
+            instance.torch_profile,
+            "--json",
+        ]
+        if self._settings.comfy.python_index_url:
+            args.extend(["--python-index-url", self._settings.comfy.python_index_url])
+        if self._settings.comfy.torch_index_url:
+            args.extend(["--torch-index-url", self._settings.comfy.torch_index_url])
+        if self._settings.comfy.torch_find_links_url:
+            args.extend(["--torch-find-links-url", self._settings.comfy.torch_find_links_url])
+        return args
 
     async def start_instance(self, instance_id: str) -> RunResponse:
         host, instance, _model_root_ids, model_roots = await self._instance_context(instance_id)

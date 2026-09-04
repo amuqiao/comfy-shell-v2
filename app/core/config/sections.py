@@ -138,6 +138,9 @@ class ComfySettings(ConfigSection):
     python_version: str = "3.12"
     torch_profile: str = "requirements"
     bind_host: str = "127.0.0.1"
+    python_index_url: str = ""
+    torch_index_url: str = ""
+    torch_find_links_url: str = ""
 
     @field_validator("data_root")
     @classmethod
@@ -167,6 +170,16 @@ class ComfySettings(ConfigSection):
         if not value.strip():
             raise ValueError("COMFY__BIND_HOST is required")
         return value
+
+    @field_validator("python_index_url", "torch_index_url", "torch_find_links_url")
+    @classmethod
+    def validate_index_url(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            return ""
+        if not (stripped.startswith("http://") or stripped.startswith("https://")):
+            raise ValueError("COMFY index URL must be empty or an http(s) URL")
+        return stripped
 
 
 class ExecutorSettings(ConfigSection):

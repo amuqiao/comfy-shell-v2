@@ -57,8 +57,8 @@
 | `create_instance` | `POST /v1/instances` | yes | `201` | `UNAUTHORIZED`, `REQUEST_INVALID`, `HOST_NOT_FOUND`, `MODEL_ROOT_NOT_FOUND`, `INSTANCE_SLUG_CONFLICT` |
 | `get_instance` | `GET /v1/instances/{instance_id}` | yes | `200` | `UNAUTHORIZED`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND` |
 | `update_instance_launch_config` | `PATCH /v1/instances/{instance_id}/launch-config` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `MODEL_ROOT_NOT_FOUND`, `COMFYCTL_FAILED`, `PID_INVALID`, `INSTANCE_RUNNING` |
-| `install_instance` | `POST /v1/instances/{instance_id}/install` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_LOCKED`, `DEPENDENCY_MISSING`, `GIT_FAILED`, `UV_FAILED`, `PYTHON_DEPENDENCY_FAILED` |
-| `reinstall_instance` | `POST /v1/instances/{instance_id}/reinstall` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_LOCKED`, `DEPENDENCY_MISSING`, `GIT_FAILED`, `UV_FAILED`, `PYTHON_DEPENDENCY_FAILED` |
+| `install_instance` | `POST /v1/instances/{instance_id}/install` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_LOCKED`, `INSTANCE_RUNNING`, `PID_INVALID`, `DEPENDENCY_MISSING`, `GIT_FAILED`, `UV_FAILED`, `PYTHON_DEPENDENCY_FAILED` |
+| `reinstall_instance` | `POST /v1/instances/{instance_id}/reinstall` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_LOCKED`, `INSTANCE_RUNNING`, `PID_INVALID`, `DEPENDENCY_MISSING`, `GIT_FAILED`, `UV_FAILED`, `PYTHON_DEPENDENCY_FAILED` |
 | `start_instance` | `POST /v1/instances/{instance_id}/start` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PORT_IN_USE`, `INSTANCE_NOT_INSTALLED`, `VENV_MISSING`, `PROCESS_START_FAILED` |
 | `stop_instance` | `POST /v1/instances/{instance_id}/stop` | yes | `200` | `UNAUTHORIZED`, `REQUEST_INVALID`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PROCESS_STOP_TIMEOUT`, `PID_INVALID` |
 | `status_instance` | `GET /v1/instances/{instance_id}/status` | yes | `200` | `UNAUTHORIZED`, `INSTANCE_NOT_FOUND`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED`, `PID_INVALID` |
@@ -225,6 +225,9 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
 会先使用 `uv pip install --torch-backend cu124` 安装已固定的 CUDA 12.4 版本组：
 `torch==2.6.0+cu124`、`torchvision==0.21.0+cu124`、`torchaudio==2.6.0+cu124`，再安装过滤掉这三个包的
 ComfyUI requirements。这样 torch 生态绑定已验证的 CUDA 12.4 wheel，普通 Python 依赖仍然可以走环境里的默认 PyPI 源或镜像。
+服务端可通过远端 `.env` 配置 `COMFY__PYTHON_INDEX_URL`、`COMFY__TORCH_INDEX_URL` 和
+`COMFY__TORCH_FIND_LINKS_URL` 改变 install/reinstall 的 `uv pip install` package source。该配置不进入 HTTP request body；
+调用方只选择版本和 runtime，依赖源由远端服务环境负责。
 对 NVIDIA A10 / Driver 550 / CUDA 12.4 这类主机，probe 当前推荐的兼容 ComfyUI ref 是
 `8b099de36acd81acd1afa3b5442951dc847e0a52`；当前 ComfyUI `master` 已知可能要求更新的 torch 生态，不应作为这类主机的默认 happy path。
 
@@ -260,6 +263,30 @@ When `restart=true`, the control plane starts the instance after a successful in
 ```json
 {}
 ```
+
+`GET /v1/instances/{instance_id}/status` 的 `data` 至少包含：
+
+```json
+{
+  "install_root": "/data/wangqiao/ComfyUI-Installs/comfy-prod",
+  "manifest_path": "/data/wangqiao/ComfyUI-Installs/comfy-prod/manifest.json",
+  "manifest_exists": true,
+  "pid_file": "/data/wangqiao/ComfyUI-Installs/comfy-prod/.run/comfyui.pid",
+  "pid": 12345,
+  "process_alive": true,
+  "pid_process_alive": true,
+  "pid_owner_valid": true,
+  "port": 8188,
+  "port_open": true,
+  "port_listening": true,
+  "port_in_use_by_other": false,
+  "open_url": "http://127.0.0.1:8188/",
+  "log_path": "/data/wangqiao/ComfyUI-Installs/comfy-prod/logs/comfyui.log"
+}
+```
+
+`process_alive=true` 表示 PID 文件指向当前实例拥有的 ComfyUI 进程。`port_in_use_by_other=true`
+表示当前实例未运行，但配置端口已被其它进程占用；调用方应要求用户先换端口或释放端口。
 
 Query parameters:
 

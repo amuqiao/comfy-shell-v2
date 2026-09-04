@@ -316,6 +316,30 @@ def test_dev_doctor_smoke():
     assert "api_port" in result.stdout
 
 
+def test_scripts_include_common_user_bin_dirs_for_uv(tmp_path):
+    home = tmp_path / "home"
+    bin_dir = home / ".local" / "bin"
+    bin_dir.mkdir(parents=True)
+    write_executable(bin_dir / "uv", "#!/usr/bin/env sh\nprintf 'uv 0.0.0\\n'\n")
+
+    result = subprocess.run(
+        ["./scripts/dev.sh", "doctor"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=script_env(
+            tmp_path,
+            HOME=str(home),
+            PATH="/usr/bin:/bin:/usr/sbin:/sbin",
+            API_PORT=str(unused_port()),
+        ),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OK        uv" in result.stdout
+
+
 def test_dev_ports_json_is_machine_readable():
     result = run_script("./scripts/dev.sh", "ports", "1", "--json", "--allow-busy")
 
@@ -484,6 +508,7 @@ def test_dev_status_prints_comfy_data_directories(tmp_path):
     assert str(data_root / "ComfyUI-Installs") in result.stdout
     assert str(data_root / "ComfyUI-Shared" / "models") in result.stdout
     assert str(data_root / "ComfyUI-Cache" / "download-cache") in result.stdout
+    assert "dev.sh/run.sh do not stop ComfyUI" in result.stdout
 
 
 def test_restart_without_target_defaults_to_api(tmp_path):
@@ -957,6 +982,7 @@ def test_run_dev_down_stops_api_then_deps(tmp_path):
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "does not stop ComfyUI instances" in result.stdout
     assert log_file.read_text().splitlines() == [
         "dev stop api",
         "deploy down compose-deps",
@@ -1164,6 +1190,7 @@ def test_run_help_documents_daily_dev_contract():
     assert "check dev" in result.stdout
     assert "migrate" in result.stdout
     assert "dev recipe 表示当前项目的日常开发环境全集" in result.stdout
+    assert "不启动或停止 ComfyUI 实例" in result.stdout
     assert "down all" not in result.stdout
 
 

@@ -258,6 +258,16 @@ def test_ui_injects_configured_api_prefix():
     assert "/hosts/${hostParam}/probe" in response.text
     assert "nvidia_smi_error" in response.text
     assert "gpu_ids" in response.text
+    assert 'id="stop-running"' in response.text
+    assert "loadInstanceStatuses" in response.text
+    assert "port_in_use_by_other" in response.text
+    assert "status-running" in response.text
+    assert "Use SECURITY__SERVICE_API_KEY from the remote .env as the Bearer token." in response.text
+    assert "PARTIAL_FAILURE" in response.text
+    assert "failed_instances" in response.text
+    assert "request started." in response.text
+    assert "NETWORK_ERROR" in response.text
+    assert "RESPONSE_INVALID" in response.text
 
 
 def test_access_log_exposes_stable_fields(test_settings):

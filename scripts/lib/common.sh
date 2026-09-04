@@ -6,6 +6,21 @@ ROOT_DIR="${ROOT_DIR:-$(cd "$COMMON_DIR/../.." && pwd)}"
 RUN_DIR="${RUN_DIR:-$ROOT_DIR/.run}"
 LOG_DIR="${LOG_DIR:-$ROOT_DIR/logs}"
 
+augment_user_path() {
+  local dir
+  [[ -n "${HOME:-}" ]] || return 0
+  for dir in "$HOME/.local/bin" "$HOME/.cargo/bin"; do
+    [[ -d "$dir" ]] || continue
+    case ":$PATH:" in
+      *":$dir:"*) ;;
+      *) PATH="$dir:$PATH" ;;
+    esac
+  done
+  export PATH
+}
+
+augment_user_path
+
 section() {
   printf "\n== %s ==\n" "$1"
 }

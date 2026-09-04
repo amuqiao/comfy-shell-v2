@@ -177,6 +177,32 @@
         padding: 6px 8px;
       }
 
+      .status-running {
+        background: #e6f4ea;
+        border-color: #b7dfc2;
+        color: #185c2f;
+      }
+
+      .status-stopped {
+        background: #f1f3f4;
+        border-color: #d5d7da;
+        color: #3c4043;
+      }
+
+      .status-not-installed,
+      .status-port-busy {
+        background: #fff4e5;
+        border-color: #f4cf9a;
+        color: #7a4a00;
+      }
+
+      .status-error,
+      .status-unknown {
+        background: #fce8e6;
+        border-color: #f5b6b1;
+        color: #8a1c13;
+      }
+
       .kv {
         display: grid;
         gap: 6px;
@@ -304,6 +330,7 @@
               </div>
             </details>
             <button id="create-instance" type="button">Create Instance</button>
+            <button id="stop-running" class="secondary" type="button">Stop Running</button>
             <div id="instances" class="list"></div>
           </div>
         </section>
@@ -345,6 +372,7 @@
         hosts: [],
         modelRoots: [],
         instances: [],
+        instanceStatuses: {},
         hostProbes: {},
         selectedHostId: null,
         selectedInstanceId: null,
@@ -358,14 +386,21 @@
       const modelPathInput = document.querySelector("#model-path");
       const createModelRootButton = document.querySelector("#create-model-root");
       const createInstanceButton = document.querySelector("#create-instance");
+      const stopRunningButton = document.querySelector("#stop-running");
       const advancedEnabled = document.querySelector("#advanced-enabled");
       const instanceVersion = document.querySelector("#instance-version");
       const instanceRuntime = document.querySelector("#instance-runtime");
       const selectedVersion = document.querySelector("#selected-version");
       const saveLaunchConfigButton = document.querySelector("#save-launch-config");
-      const instanceActions = ["install", "reinstall", "start", "stop", "status", "ready", "logs"].map((id) =>
-        document.querySelector(`#${id}`),
-      );
+      const actionButtons = {
+        install: document.querySelector("#install"),
+        reinstall: document.querySelector("#reinstall"),
+        start: document.querySelector("#start"),
+        stop: document.querySelector("#stop"),
+        status: document.querySelector("#status"),
+        ready: document.querySelector("#ready"),
+        logs: document.querySelector("#logs"),
+      };
 
       function headers() {
         const token = document.querySelector("#token").value.trim();
@@ -392,10 +427,46 @@
       }
 
       async function request(path, options = {}, display = true) {
-        const response = await fetch(`${apiPrefix}${path}`, { ...options, headers: headers() });
-        const body = await response.json();
+        let response;
+        try {
+          response = await fetch(`${apiPrefix}${path}`, { ...options, headers: headers() });
+        } catch (caught) {
+          const body = {
+            code: "NETWORK_ERROR",
+            message: "Request failed before receiving a response.",
+            details: { path, error: caught?.message || String(caught) },
+          };
+          if (display) show(body);
+          const error = new Error(body.code);
+          error.body = body;
+          throw error;
+        }
+        let body;
+        try {
+          body = await response.json();
+        } catch (caught) {
+          body = {
+            code: "RESPONSE_INVALID",
+            message: "Response is not valid JSON.",
+            details: { path, status: response.status, status_text: response.statusText, error: caught?.message || String(caught) },
+          };
+          show(body);
+          const error = new Error(body.code);
+          error.body = body;
+          throw error;
+        }
+        if (!response.ok && body.code === "UNAUTHORIZED") {
+          body.details = {
+            ...(body.details || {}),
+            hint: "Use SECURITY__SERVICE_API_KEY from the remote .env as the Bearer token.",
+          };
+        }
         if (display || !response.ok) show(body);
-        if (!response.ok) throw new Error(body.code || response.statusText);
+        if (!response.ok) {
+          const error = new Error(body.code || response.statusText);
+          error.body = body;
+          throw error;
+        }
         return body.data;
       }
 
@@ -489,6 +560,40 @@
         return `ssh -L ${instance.comfy_port}:127.0.0.1:${instance.comfy_port} <user@remote-host>`;
       }
 
+      function statusRecord(instance) {
+        return state.instanceStatuses[instance.id] || null;
+      }
+
+      function lifecycle(instance) {
+        const record = statusRecord(instance);
+        if (!record) return { key: "unknown", label: "unknown", data: {} };
+        if (!record.ok) return { key: "error", label: record.code || "error", data: record.data || {} };
+        const data = record.data || {};
+        if (data.process_alive) return { key: "running", label: "running", data };
+        if (!data.manifest_exists) return { key: "not-installed", label: "not installed", data };
+        if (data.port_in_use_by_other) return { key: "port-busy", label: "port busy", data };
+        return { key: "stopped", label: "stopped", data };
+      }
+
+      function statusBadge(instance) {
+        const state = lifecycle(instance);
+        return `<span class="pill status-${escapeHtml(state.key)}">${escapeHtml(state.label)}</span>`;
+      }
+
+      function canStart(instance) {
+        const status = lifecycle(instance).key;
+        return status === "stopped";
+      }
+
+      function canStop(instance) {
+        return lifecycle(instance).key === "running";
+      }
+
+      function canEditStoppedConfig(instance) {
+        const status = lifecycle(instance).key;
+        return status === "stopped" || status === "not-installed" || status === "port-busy";
+      }
+
       function selectedVersionOptions(instance) {
         const visibleVersions = (state.catalog?.versions || []).filter((item) => !item.advanced);
         const currentOption = `<option value="__current__">Current: ${escapeHtml(versionText(instance))}</option>`;
@@ -558,15 +663,22 @@
 
       function syncControls() {
         const hasHost = Boolean(selectedHost());
-        const hasInstance = Boolean(selectedInstance());
+        const instance = selectedInstance();
+        const hasInstance = Boolean(instance);
         const modelPath = modelPathInput.value || modelPathInput.placeholder;
         createModelRootButton.disabled = state.busy || !hasHost || !modelPath || modelRootPathRegistered(modelPath);
         createInstanceButton.disabled = state.busy || !hasHost || !instanceVersion.value || !instanceRuntime.value;
-        instanceActions.forEach((button) => {
-          button.disabled = state.busy || !hasInstance;
-        });
-        saveLaunchConfigButton.disabled = state.busy || !hasInstance || !document.querySelector("#launch-port").value;
-        selectedVersion.disabled = state.busy || !hasInstance;
+        stopRunningButton.disabled = state.busy || !state.instances.some((item) => canStop(item));
+        actionButtons.install.disabled = state.busy || !hasInstance || !canEditStoppedConfig(instance);
+        actionButtons.reinstall.disabled = state.busy || !hasInstance || !canEditStoppedConfig(instance);
+        actionButtons.start.disabled = state.busy || !hasInstance || !canStart(instance);
+        actionButtons.stop.disabled = state.busy || !hasInstance || !canStop(instance);
+        actionButtons.status.disabled = state.busy || !hasInstance;
+        actionButtons.ready.disabled = state.busy || !hasInstance;
+        actionButtons.logs.disabled = state.busy || !hasInstance;
+        saveLaunchConfigButton.disabled =
+          state.busy || !hasInstance || !canEditStoppedConfig(instance) || !document.querySelector("#launch-port").value;
+        selectedVersion.disabled = state.busy || !hasInstance || !canEditStoppedConfig(instance);
         modelPathInput.placeholder = hasHost ? defaultModelRootPath(selectedHost()) : "";
         if (hasHost && !modelPathInput.value) {
           modelPathInput.value = defaultModelRootPath(selectedHost());
@@ -635,8 +747,14 @@
 
       function renderSelectedInstance() {
         const item = selectedInstance();
-        const version = item ? versionByRef(item.comfy_ref) : null;
         const modelRoots = item ? instanceModelRootText(item) : "";
+        const life = item ? lifecycle(item) : null;
+        const statusData = life?.data || {};
+        const openUrl = statusData.open_url || `http://127.0.0.1:${item?.comfy_port || ""}/`;
+        const openValue =
+          item && life?.key === "running"
+            ? `<a href="${escapeHtml(openUrl)}" target="_blank" rel="noreferrer">${escapeHtml(openUrl)}</a>`
+            : escapeHtml(openUrl);
         if (item) {
           selectedVersion.innerHTML = selectedVersionOptions(item);
           selectedVersion.value = "__current__";
@@ -650,12 +768,16 @@
         document.querySelector("#selected-instance").innerHTML = item
           ? [
               `<div><strong>Name</strong><span>${escapeHtml(item.name)}</span></div>`,
+              `<div><strong>State</strong><span>${statusBadge(item)}</span></div>`,
               `<div><strong>Version</strong><span>${escapeHtml(versionText(item))}</span></div>`,
               `<div><strong>Ref</strong><span>${escapeHtml(shortRef(item.comfy_ref))}${item.resolved_commit ? ` -> ${escapeHtml(shortRef(item.resolved_commit))}` : ""}</span></div>`,
               `<div><strong>Install</strong><span>${escapeHtml(item.install_root)}</span></div>`,
               `<div><strong>Runtime</strong><span>${escapeHtml(runtimeText(item))}</span></div>`,
               `<div><strong>Model Roots</strong><span>${escapeHtml(modelRoots || "none")}</span></div>`,
-              `<div><strong>Open</strong><span><a href="http://127.0.0.1:${escapeHtml(item.comfy_port)}/" target="_blank" rel="noreferrer">http://127.0.0.1:${escapeHtml(item.comfy_port)}/</a></span></div>`,
+              `<div><strong>PID</strong><span>${escapeHtml(statusData.pid || "none")}</span></div>`,
+              `<div><strong>Port</strong><span>${escapeHtml(item.comfy_port)}${statusData.port_in_use_by_other ? " | occupied by another process" : ""}</span></div>`,
+              `<div><strong>Log</strong><span>${escapeHtml(statusData.log_path || "pending")}</span></div>`,
+              `<div><strong>Open</strong><span>${openValue}</span></div>`,
               `<div><strong>SSH Tunnel</strong><span>${escapeHtml(sshTunnelCommand(item))}</span></div>`,
             ].join("")
           : "";
@@ -671,6 +793,7 @@
               <strong>${escapeHtml(item.name)}</strong>
               <div class="muted">
                 <span class="pill">${escapeHtml(item.instance_slug)}</span>
+                ${statusBadge(item)}
                 ${escapeHtml(versionText(item))} | ${escapeHtml(runtimeText(item))} | port ${escapeHtml(item.comfy_port)}
               </div>
               <div class="muted">${escapeHtml(item.install_root)}</div>
@@ -687,6 +810,23 @@
         syncControls();
       }
 
+      async function loadInstanceStatuses() {
+        const statuses = {};
+        for (const item of state.instances) {
+          try {
+            const status = await request(`/instances/${encodeURIComponent(item.id)}/status`, {}, false);
+            statuses[item.id] = { ok: true, data: status.data || {} };
+          } catch (error) {
+            statuses[item.id] = {
+              ok: false,
+              code: error.body?.code || error.message,
+              data: error.body?.details?.data || {},
+            };
+          }
+        }
+        state.instanceStatuses = statuses;
+      }
+
       async function loadCatalog() {
         state.catalog = await request("/catalog", {}, false);
         renderCatalogControls();
@@ -696,6 +836,7 @@
         if (!hostId) {
           state.modelRoots = [];
           state.instances = [];
+          state.instanceStatuses = {};
           renderRuntime();
           renderModelRoots();
           renderInstances();
@@ -714,6 +855,8 @@
         const instances = await request(`/instances?host_id=${hostParam}`);
         if (state.selectedHostId !== hostId) return;
         state.instances = instances.instances;
+        await loadInstanceStatuses();
+        if (state.selectedHostId !== hostId) return;
         renderInstances();
       }
 
@@ -798,6 +941,42 @@
           await loadHostResources(state.selectedHostId);
         });
       });
+      document.querySelector("#stop-running").addEventListener("click", async () => {
+        await withBusy(async () => {
+          const running = state.instances.filter((item) => canStop(item));
+          const results = [];
+          let refreshError = null;
+          for (const item of running) {
+            try {
+              const result = await request(`/instances/${encodeURIComponent(item.id)}/stop`, {
+                method: "POST",
+                body: JSON.stringify({}),
+              }, false);
+              results.push({ instance_id: item.id, instance_slug: item.instance_slug, code: "OK", run: result });
+            } catch (error) {
+              results.push({
+                instance_id: item.id,
+                instance_slug: item.instance_slug,
+                code: error.body?.code || error.message,
+                error: error.body || { message: error.message },
+              });
+            }
+          }
+          try {
+            await loadHostResources(state.selectedHostId);
+          } catch (error) {
+            refreshError = error.body || { code: error.message || "REFRESH_FAILED" };
+          }
+          const failed = results.filter((item) => item.code !== "OK");
+          show({
+            code: failed.length || refreshError ? "PARTIAL_FAILURE" : "OK",
+            stopped_instances: results.length - failed.length,
+            failed_instances: failed.length,
+            runs: results,
+            refresh_error: refreshError,
+          });
+        });
+      });
       document.querySelector("#save-launch-config").addEventListener("click", async () => {
         await withBusy(async () => {
           if (!selectedInstance()) {
@@ -817,7 +996,8 @@
       for (const action of ["install", "reinstall", "start", "stop"]) {
         document.querySelector(`#${action}`).addEventListener("click", async () => {
           await withBusy(async () => {
-            if (!selectedInstance()) {
+            const instance = selectedInstance();
+            if (!instance) {
               show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
               return;
             }
@@ -825,6 +1005,7 @@
               action === "reinstall" && selectedVersion.value !== "__current__"
                 ? { comfy_version_id: selectedVersion.value }
                 : {};
+            show({ code: "RUNNING", action, instance_slug: instance.instance_slug, message: `${action} request started.` });
             await request(`/instances/${state.selectedInstanceId}/${action}`, { method: "POST", body: JSON.stringify(body) });
             await loadHostResources(state.selectedHostId);
           });
@@ -843,6 +1024,9 @@
       }
       renderCatalogControls();
       syncControls();
+      refresh().catch((error) => {
+        if (!output.textContent) show({ code: error.message || "REFRESH_FAILED" });
+      });
     </script>
   </body>
 </html>

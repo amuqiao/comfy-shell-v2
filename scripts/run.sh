@@ -16,6 +16,7 @@ Usage:
 
 不负责:
   不直接管理进程、Docker Compose、K8s、远端资源或跨仓库服务。
+  不启动或停止 ComfyUI 实例；实例生命周期请在 Web UI 或 Web API 中显式操作。
   宿主机本地进程请使用 ./scripts/dev.sh；Docker Compose 服务请使用 ./scripts/deploy.sh。
 
 运行环境:
@@ -37,6 +38,7 @@ Usage:
   up dev 先执行 ./scripts/deploy.sh up compose-deps，再执行 ./scripts/dev.sh migrate，然后 ./scripts/dev.sh start api，最后 ./scripts/dev.sh status。
   status dev 先执行 ./scripts/dev.sh status，再执行 ./scripts/deploy.sh status compose-deps。
   down dev 先执行 ./scripts/dev.sh stop api，再执行 ./scripts/deploy.sh down compose-deps。
+  down dev 不会停止已启动的 ComfyUI 实例；停止控制面前请先在 /ui/ Stop 实例。
   restart dev 先执行 ./scripts/run.sh down dev，再执行 ./scripts/run.sh up dev。
   check dev 先执行 ./scripts/dev.sh doctor，再执行 ./scripts/deploy.sh check。
 
@@ -111,6 +113,7 @@ Usage:
 
 副作用与保护边界:
   不删除 Docker volume，不清理 ComfyUI 安装目录、模型目录或缓存目录。
+  不停止 ComfyUI 实例进程；实例需要在 Web UI 或 Web API 中显式 Stop。
   固定顺序：./scripts/dev.sh stop api -> ./scripts/deploy.sh down compose-deps。
 
 常用示例:
@@ -193,6 +196,7 @@ run_dev_status() {
 
 run_dev_down() {
   section "Run Dev"
+  event "WARN" "instances" "run.sh down dev does not stop ComfyUI instances; stop them from /ui/ first"
   event "RUN" "api" "stop"
   "$ROOT_DIR/scripts/dev.sh" stop api
   event "RUN" "compose-deps" "down"

@@ -230,7 +230,69 @@ def test_instance_status_uses_derived_install_root(tmp_path):
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["data"]["install_root"] == str(tmp_path / "ComfyUI-Installs" / "comfy-prod")
+    assert payload["data"]["manifest_path"] == str(tmp_path / "ComfyUI-Installs" / "comfy-prod" / "manifest.json")
+    assert payload["data"]["pid_file"] == str(tmp_path / "ComfyUI-Installs" / "comfy-prod" / ".run" / "comfyui.pid")
     assert payload["data"]["process_alive"] is False
+    assert payload["data"]["port_open"] is False
+    assert payload["data"]["port_in_use_by_other"] is False
+    assert payload["data"]["open_url"] == "http://127.0.0.1:8188/"
+
+
+def test_instance_status_reports_port_used_by_other_process(tmp_path):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = int(listener.getsockname()[1])
+
+        result = run_comfyctl(
+            "instance",
+            "status",
+            "--id",
+            "inst-1",
+            "--slug",
+            "comfy-prod",
+            "--data-root",
+            str(tmp_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--json",
+        )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["data"]["process_alive"] is False
+    assert payload["data"]["port_open"] is True
+    assert payload["data"]["port_listening"] is False
+    assert payload["data"]["port_in_use_by_other"] is True
+
+
+def test_instance_status_reports_unresolvable_host_as_structured_error(tmp_path):
+    result = run_comfyctl(
+        "instance",
+        "status",
+        "--id",
+        "inst-1",
+        "--slug",
+        "comfy-prod",
+        "--data-root",
+        str(tmp_path),
+        "--host",
+        "does-not-resolve.invalid",
+        "--port",
+        "8188",
+        "--json",
+    )
+
+    assert result.returncode == 5
+    assert "Traceback" not in result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["error_code"] == "COMFYCTL_FAILED"
+    assert payload["layer"] == "process"
+    assert "failed to check port does-not-resolve.invalid:8188" in payload["message"]
 
 
 def test_invalid_slug_returns_request_invalid(tmp_path):
@@ -428,6 +490,77 @@ def test_install_cu124_profile_installs_torch_from_cuda_index(tmp_path):
     assert "requirements-without-torch.txt" in logged[1]
     assert "/ComfyUI/requirements-without-torch.txt" in logged[1]
     assert "--torch-backend cu124" not in logged[1]
+
+
+def test_install_uses_configured_python_and_torch_indexes(tmp_path):
+    uv_log = tmp_path / "uv.log"
+    env = fake_tool_env(tmp_path)
+    env["FAKE_UV_LOG"] = str(uv_log)
+
+    result = run_comfyctl(
+        "instance",
+        "install",
+        "--id",
+        "inst-1",
+        "--slug",
+        "comfy-prod",
+        "--data-root",
+        str(tmp_path),
+        "--repo",
+        "https://example.invalid/ComfyUI.git",
+        "--ref",
+        "main",
+        "--python",
+        "3.12",
+        "--torch-profile",
+        "cu124",
+        "--python-index-url",
+        "https://pypi.example/simple/",
+        "--torch-index-url",
+        "https://torch.example/cu124/",
+        "--json",
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    logged = uv_log.read_text(encoding="utf-8").splitlines()
+    assert "--index-url https://torch.example/cu124/" in logged[0]
+    assert "--torch-backend cu124" not in logged[0]
+    assert "--index-url https://pypi.example/simple/" in logged[1]
+
+
+def test_install_uses_configured_torch_find_links(tmp_path):
+    uv_log = tmp_path / "uv.log"
+    env = fake_tool_env(tmp_path)
+    env["FAKE_UV_LOG"] = str(uv_log)
+
+    result = run_comfyctl(
+        "instance",
+        "install",
+        "--id",
+        "inst-1",
+        "--slug",
+        "comfy-prod",
+        "--data-root",
+        str(tmp_path),
+        "--repo",
+        "https://example.invalid/ComfyUI.git",
+        "--ref",
+        "main",
+        "--python",
+        "3.12",
+        "--torch-profile",
+        "cu124",
+        "--torch-find-links-url",
+        "https://torch.example/cu124/",
+        "--json",
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    logged = uv_log.read_text(encoding="utf-8").splitlines()
+    assert "--find-links https://torch.example/cu124/" in logged[0]
+    assert "--torch-backend cu124" not in logged[0]
 
 
 def assert_install_failure_preserves_active_instance(tmp_path, *, expected_error: str, env: dict[str, str]) -> None:
