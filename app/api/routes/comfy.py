@@ -9,6 +9,7 @@ from app.core.security import Principal, get_current_principal
 from app.db.unit_of_work import uow_factory_from_session_factory
 from app.executors.local import LocalExecutor
 from app.schemas.comfy import (
+    ComfyCatalogResponse,
     HostCreateRequest,
     HostListResponse,
     HostResponse,
@@ -40,6 +41,19 @@ def get_comfy_service(request: Request) -> ComfyService:
     executor = LocalExecutor(root_dir=ROOT_DIR)
     ctl = ComfyCtlClient(executor, root_dir=ROOT_DIR)
     return ComfyService(uow_factory_from_session_factory(session_factory), ctl, request.app.state.settings)
+
+
+@router.get(
+    "/catalog",
+    operation_id="get_comfy_catalog",
+    response_model=SuccessEnvelope[ComfyCatalogResponse],
+    responses=operation_responses("get_comfy_catalog"),
+)
+async def get_comfy_catalog(
+    _principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ComfyService, Depends(get_comfy_service)],
+) -> SuccessEnvelope[ComfyCatalogResponse]:
+    return success_envelope(service.get_catalog(), request_id=get_request_id(), trace_id=get_trace_id())
 
 
 @router.get(

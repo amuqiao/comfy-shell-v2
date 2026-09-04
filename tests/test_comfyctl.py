@@ -192,11 +192,17 @@ def test_host_probe_reports_gpu_runtime_recommendation(tmp_path):
     assert payload["data"]["cuda_version"] == "12.4"
     assert payload["data"]["gpus"][0]["name"] == "NVIDIA A10"
     assert payload["data"]["runtime_recommendation"] == {
+        "rule_id": "nvidia-cuda-124",
+        "version_id": "comfyui-0.27.0-verified",
+        "version_label": "ComfyUI 0.27.0 verified",
+        "version_channel": "stable",
+        "runtime_profile_id": "nvidia-cu124-py312-torch260",
+        "runtime_profile_label": "NVIDIA CUDA 12.4 / Python 3.12 / PyTorch 2.6.0",
         "comfy_ref": "8b099de36acd81acd1afa3b5442951dc847e0a52",
         "python_version": "3.12",
         "torch_profile": "cu124",
         "gpu_ids": ["0"],
-        "reason": "Detected NVIDIA CUDA 12.4; use the verified cu124 runtime and compatible ComfyUI ref.",
+        "reason": "Detected NVIDIA CUDA 12.4 or newer; use the verified CUDA 12.4 runtime and compatible ComfyUI ref.",
         "warnings": [],
     }
 

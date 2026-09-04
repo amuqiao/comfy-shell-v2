@@ -14,6 +14,7 @@ from app.db.unit_of_work import UowFactory
 from app.executors.base import CommandResult, Executor
 from app.models.comfy import CommandRun, Host, Instance, ModelRoot
 from app.schemas.comfy import (
+    ComfyCatalogResponse,
     HostCreateRequest,
     HostListResponse,
     HostResponse,
@@ -33,6 +34,7 @@ from app.schemas.comfy import (
     RunResponse,
 )
 from app.services.comfy_paths import default_model_root_path, instance_install_root, resolved_data_root, service_root
+from comfyctl.catalog import catalog_payload, default_version, runtime_profile_by_id, version_by_id
 
 
 def iso(value) -> str | None:
@@ -135,6 +137,52 @@ class ComfyService:
         self._uow_factory = uow_factory
         self._ctl = ctl
         self._settings = settings
+
+    def get_catalog(self) -> ComfyCatalogResponse:
+        return ComfyCatalogResponse(**catalog_payload())
+
+    def _resolve_comfy_ref(self, data: InstanceCreateRequest) -> str:
+        if data.comfy_version_id is not None and data.comfy_ref is not None:
+            raise AppError(
+                "REQUEST_INVALID",
+                details={"field": "comfy_ref", "message": "comfy_version_id and comfy_ref cannot be used together"},
+            )
+        if data.comfy_version_id is not None:
+            try:
+                return str(version_by_id(data.comfy_version_id)["ref"])
+            except KeyError as exc:
+                raise AppError(
+                    "REQUEST_INVALID",
+                    details={"field": "comfy_version_id", "message": f"unknown comfy_version_id: {data.comfy_version_id}"},
+                ) from exc
+        if data.comfy_ref is not None:
+            return data.comfy_ref
+        if self._settings.comfy.default_ref:
+            return self._settings.comfy.default_ref
+        return str(default_version()["ref"])
+
+    def _resolve_runtime(self, data: InstanceCreateRequest) -> tuple[str, str]:
+        if data.runtime_profile_id is not None and (data.python_version is not None or data.torch_profile is not None):
+            raise AppError(
+                "REQUEST_INVALID",
+                details={
+                    "field": "runtime_profile_id",
+                    "message": "runtime_profile_id cannot be mixed with python_version or torch_profile",
+                },
+            )
+        if data.runtime_profile_id is not None:
+            try:
+                profile = runtime_profile_by_id(data.runtime_profile_id)
+            except KeyError as exc:
+                raise AppError(
+                    "REQUEST_INVALID",
+                    details={
+                        "field": "runtime_profile_id",
+                        "message": f"unknown runtime_profile_id: {data.runtime_profile_id}",
+                    },
+                ) from exc
+            return str(profile["python_version"]), str(profile["torch_profile"])
+        return data.python_version or self._settings.comfy.python_version, data.torch_profile or self._settings.comfy.torch_profile
 
     async def ensure_default_host(self) -> HostResponse:
         async with self._uow_factory() as uow:
@@ -249,13 +297,15 @@ class ComfyService:
                 model_root = await uow.model_roots.get(model_root_id)
                 if model_root is None or model_root.host_id != data.host_id:
                     raise AppError("MODEL_ROOT_NOT_FOUND", details={"model_root_id": model_root_id})
+            comfy_ref = self._resolve_comfy_ref(data)
+            python_version, torch_profile = self._resolve_runtime(data)
             instance = await uow.instances.create(
                 host_id=data.host_id,
                 name=data.name,
                 instance_slug=data.instance_slug,
-                comfy_ref=data.comfy_ref or self._settings.comfy.default_ref or "master",
-                python_version=data.python_version or self._settings.comfy.python_version,
-                torch_profile=data.torch_profile or self._settings.comfy.torch_profile,
+                comfy_ref=comfy_ref,
+                python_version=python_version,
+                torch_profile=torch_profile,
                 comfy_port=data.comfy_port or self._settings.comfy.instance_port_start,
                 gpu_ids=data.gpu_ids,
                 primary_model_root_id=primary_model_root_id,

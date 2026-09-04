@@ -212,6 +212,10 @@ def test_openapi_exposes_route_contract(app):
     assert status_instance["operationId"] == "status_instance"
     assert "requestBody" not in status_instance
 
+    catalog = schema["paths"]["/v1/catalog"]["get"]
+    assert catalog["operationId"] == "get_comfy_catalog"
+    assert catalog["security"]
+
     health = schema["paths"]["/health"]["get"]
     assert "security" not in health
 
@@ -234,10 +238,16 @@ def test_ui_injects_configured_api_prefix():
     assert "/data/comfy-shell-v2/ComfyUI-Shared/models" not in response.text
     assert "function defaultModelRootPath(host)" in response.text
     assert "/ComfyUI-Shared/models" in response.text
+    assert 'id="instance-version"' in response.text
+    assert 'id="instance-runtime"' in response.text
     assert 'id="instance-torch"' in response.text
     assert 'id="instance-gpu"' in response.text
-    assert 'value="cu124"' in response.text
+    assert "comfy_version_id" in response.text
+    assert "runtime_profile_id" in response.text
     assert "runtime_recommendation" in response.text
+    assert ".filter((item) => !item.advanced)" in response.text
+    assert 'id="advanced-enabled"' in response.text
+    assert "/catalog" in response.text
     assert "/hosts/${hostParam}/probe" in response.text
     assert "nvidia_smi_error" in response.text
     assert "gpu_ids" in response.text

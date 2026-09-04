@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "github": {
+    "repo": "comfyanonymous/ComfyUI",
+    "url": "https://github.com/comfyanonymous/ComfyUI.git",
+    "default_branch": "master"
+  },
+  "versions": [
+    {
+      "id": "comfyui-0.27.0-verified",
+      "label": "ComfyUI 0.27.0 verified",
+      "display_version": "0.27.0",
+      "channel": "stable",
+      "ref": "8b099de36acd81acd1afa3b5442951dc847e0a52",
+      "recommended": true,
+      "verified": true,
+      "description": "Verified with Python 3.12 and PyTorch 2.6.0+cu124 on NVIDIA A10 / CUDA 12.4."
+    },
+    {
+      "id": "comfyui-master",
+      "label": "Latest source master",
+      "display_version": "master",
+      "channel": "latest",
+      "ref": "master",
+      "recommended": false,
+      "verified": false,
+      "advanced": true,
+      "description": "Tracks upstream master. Use only when you accept dependency churn."
+    }
+  ],
+  "runtime_profiles": [
+    {
+      "id": "nvidia-cu124-py312-torch260",
+      "label": "NVIDIA CUDA 12.4 / Python 3.12 / PyTorch 2.6.0",
+      "python_version": "3.12",
+      "torch_profile": "cu124",
+      "backend": "cu124",
+      "gpu_vendor": "nvidia",
+      "recommended": true,
+      "verified": true,
+      "min_cuda": "12.4",
+      "packages": {
+        "torch": "torch==2.6.0+cu124",
+        "torchvision": "torchvision==0.21.0+cu124",
+        "torchaudio": "torchaudio==2.6.0+cu124"
+      },
+      "description": "Pins CUDA 12.4 wheels before installing the rest of ComfyUI requirements."
+    },
+    {
+      "id": "upstream-requirements-py312",
+      "label": "ComfyUI requirements / Python 3.12",
+      "python_version": "3.12",
+      "torch_profile": "requirements",
+      "backend": "requirements",
+      "gpu_vendor": "any",
+      "recommended": false,
+      "verified": false,
+      "advanced": false,
+      "packages": {},
+      "description": "Follows the selected ComfyUI requirements.txt. This is flexible but less reproducible."
+    }
+  ],
+  "recommendation_rules": [
+    {
+      "id": "nvidia-cuda-124",
+      "when": {
+        "gpu_vendor": "nvidia",
+        "cuda_min": "12.4"
+      },
+      "version_id": "comfyui-0.27.0-verified",
+      "runtime_profile_id": "nvidia-cu124-py312-torch260",
+      "gpu": "first",
+      "reason": "Detected NVIDIA CUDA 12.4 or newer; use the verified CUDA 12.4 runtime and compatible ComfyUI ref.",
+      "warnings": []
+    },
+    {
+      "id": "nvidia-unmatched",
+      "when": {
+        "gpu_vendor": "nvidia"
+      },
+      "version_id": "comfyui-0.27.0-verified",
+      "runtime_profile_id": "upstream-requirements-py312",
+      "gpu": "first",
+      "reason": "Detected NVIDIA GPU but no verified torch runtime profile matches this CUDA version; use the verified ComfyUI ref with upstream requirements.",
+      "warnings": [
+        "No verified CUDA torch profile matches this host; add a dedicated runtime profile before relying on GPU install."
+      ]
+    },
+    {
+      "id": "no-nvidia-gpu",
+      "when": {
+        "gpu_vendor": "none"
+      },
+      "version_id": "comfyui-0.27.0-verified",
+      "runtime_profile_id": "upstream-requirements-py312",
+      "gpu": "none",
+      "reason": "No NVIDIA GPU was detected; use the verified ComfyUI ref with upstream requirements.",
+      "warnings": []
+    }
+  ]
+}

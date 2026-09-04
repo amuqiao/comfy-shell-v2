@@ -46,6 +46,7 @@
 |---|---|---|---|---|
 | `health` | `GET /health` | no | `200` | none |
 | `ready` | `GET /ready` | no | `200` | `DEPENDENCY_UNAVAILABLE` |
+| `get_comfy_catalog` | `GET /v1/catalog` | yes | `200` | `UNAUTHORIZED` |
 | `list_hosts` | `GET /v1/hosts` | yes | `200` | `UNAUTHORIZED` |
 | `create_host` | `POST /v1/hosts` | yes | `201` | `UNAUTHORIZED`, `REQUEST_INVALID`, `HOST_NAME_CONFLICT`, `EXECUTOR_UNSUPPORTED` |
 | `probe_host` | `POST /v1/hosts/{host_id}/probe` | yes | `200` | `UNAUTHORIZED`, `HOST_NOT_FOUND`, `COMFYCTL_FAILED` |
@@ -92,9 +93,70 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
 }
 ```
 
+`GET /v1/catalog` 返回当前服务支持的 ComfyUI 版本选项、runtime profile 和推荐规则。调用方应优先保存和提交
+`comfy_version_id` 与 `runtime_profile_id`，不要让普通用户直接处理 commit SHA、Python 版本和 torch wheel 组合。
+
+```json
+{
+  "schema_version": 1,
+  "github": {
+    "repo": "comfyanonymous/ComfyUI",
+    "url": "https://github.com/comfyanonymous/ComfyUI.git",
+    "default_branch": "master"
+  },
+  "versions": [
+    {
+      "id": "comfyui-0.27.0-verified",
+      "label": "ComfyUI 0.27.0 verified",
+      "display_version": "0.27.0",
+      "channel": "stable",
+      "ref": "8b099de36acd81acd1afa3b5442951dc847e0a52",
+      "recommended": true,
+      "verified": true,
+      "advanced": false,
+      "description": "Verified with Python 3.12 and PyTorch 2.6.0+cu124 on NVIDIA A10 / CUDA 12.4."
+    }
+  ],
+  "runtime_profiles": [
+    {
+      "id": "nvidia-cu124-py312-torch260",
+      "label": "NVIDIA CUDA 12.4 / Python 3.12 / PyTorch 2.6.0",
+      "python_version": "3.12",
+      "torch_profile": "cu124",
+      "backend": "cu124",
+      "gpu_vendor": "nvidia",
+      "recommended": true,
+      "verified": true,
+      "advanced": false,
+      "min_cuda": "12.4",
+      "packages": {
+        "torch": "torch==2.6.0+cu124",
+        "torchvision": "torchvision==0.21.0+cu124",
+        "torchaudio": "torchaudio==2.6.0+cu124"
+      },
+      "description": "Pins CUDA 12.4 wheels before installing the rest of ComfyUI requirements."
+    }
+  ],
+  "recommendation_rules": [
+    {
+      "id": "nvidia-cuda-124",
+      "when": {
+        "gpu_vendor": "nvidia",
+        "cuda_min": "12.4"
+      },
+      "version_id": "comfyui-0.27.0-verified",
+      "runtime_profile_id": "nvidia-cu124-py312-torch260",
+      "gpu": "first",
+      "reason": "Detected NVIDIA CUDA 12.4 or newer; use the verified CUDA 12.4 runtime and compatible ComfyUI ref.",
+      "warnings": []
+    }
+  ]
+}
+```
+
 `POST /v1/hosts/{host_id}/probe` 返回运行时探测结果。调用方可以用
-`runtime_recommendation` 预填新实例参数；创建实例时显式传入的
-`python_version`、`torch_profile`、`gpu_ids` 仍然优先。
+`runtime_recommendation` 预填新实例参数；创建实例时应优先传入 catalog id：
+`comfy_version_id`、`runtime_profile_id` 和 `gpu_ids`。
 
 ```json
 {
@@ -115,11 +177,17 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
       }
     ],
     "runtime_recommendation": {
+      "rule_id": "nvidia-cuda-124",
+      "version_id": "comfyui-0.27.0-verified",
+      "version_label": "ComfyUI 0.27.0 verified",
+      "version_channel": "stable",
+      "runtime_profile_id": "nvidia-cu124-py312-torch260",
+      "runtime_profile_label": "NVIDIA CUDA 12.4 / Python 3.12 / PyTorch 2.6.0",
       "comfy_ref": "8b099de36acd81acd1afa3b5442951dc847e0a52",
       "python_version": "3.12",
       "torch_profile": "cu124",
       "gpu_ids": ["0"],
-      "reason": "Detected NVIDIA CUDA 12.4; use the verified cu124 runtime and compatible ComfyUI ref.",
+      "reason": "Detected NVIDIA CUDA 12.4 or newer; use the verified CUDA 12.4 runtime and compatible ComfyUI ref.",
       "warnings": []
     }
   }
@@ -133,15 +201,18 @@ Cross-cutting errors such as `UNAUTHORIZED`, `REQUEST_INVALID`, and `INTERNAL_ER
   "host_id": "uuid",
   "name": "Comfy Prod",
   "instance_slug": "comfy-prod",
-  "comfy_ref": "v0.3.50",
-  "python_version": "3.12",
-  "torch_profile": "cu124",
+  "comfy_version_id": "comfyui-0.27.0-verified",
+  "runtime_profile_id": "nvidia-cu124-py312-torch260",
   "comfy_port": 8188,
   "gpu_ids": ["0"],
   "model_root_ids": ["uuid"],
   "primary_model_root_id": "uuid"
 }
 ```
+
+高级调用方可以直接传 `comfy_ref`、`python_version`、`torch_profile`。`comfy_version_id` 不能和 `comfy_ref`
+混用；`runtime_profile_id` 不能和 `python_version` 或 `torch_profile` 混用。服务入库时仍保存解析后的
+`comfy_ref`、`python_version`、`torch_profile`。
 
 `torch_profile` 当前支持 `requirements` 和 `cu124`。`requirements` 完全跟随 ComfyUI 的 requirements；`cu124`
 会先使用 `uv pip install --torch-backend cu124` 安装已固定的 CUDA 12.4 版本组：

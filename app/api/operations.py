@@ -91,6 +91,16 @@ operation_registry.register(
 )
 operation_registry.register(
     OperationSpec(
+        "get_comfy_catalog",
+        "GET",
+        "/catalog",
+        200,
+        frozenset(),
+        response_schema="SuccessEnvelope[ComfyCatalogResponse]",
+    )
+)
+operation_registry.register(
+    OperationSpec(
         "list_hosts",
         "GET",
         "/hosts",
@@ -167,7 +177,7 @@ operation_registry.register(
         "POST",
         "/instances",
         201,
-        frozenset({"HOST_NOT_FOUND", "MODEL_ROOT_NOT_FOUND", "INSTANCE_SLUG_CONFLICT"}),
+        frozenset({"HOST_NOT_FOUND", "MODEL_ROOT_NOT_FOUND", "INSTANCE_SLUG_CONFLICT", "REQUEST_INVALID"}),
         request_schema="InstanceCreateRequest",
         response_schema="SuccessEnvelope[InstanceResponse]",
     )

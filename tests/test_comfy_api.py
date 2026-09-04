@@ -20,6 +20,12 @@ def write_executable(path, content: str) -> None:
 
 def test_comfy_single_host_flow(sqlite_app):
     with TestClient(sqlite_app) as client:
+        catalog = client.get("/v1/catalog", headers=auth_headers())
+        assert catalog.status_code == 200
+        catalog_data = catalog.json()["data"]
+        assert catalog_data["versions"][0]["id"] == "comfyui-0.27.0-verified"
+        assert catalog_data["runtime_profiles"][0]["id"] == "nvidia-cu124-py312-torch260"
+
         hosts = client.get("/v1/hosts", headers=auth_headers())
         assert hosts.status_code == 200
         host = hosts.json()["data"]["hosts"][0]
@@ -38,6 +44,8 @@ def test_comfy_single_host_flow(sqlite_app):
         assert "cuda_version" in probe_data
         assert "gpus" in probe_data
         assert "comfy_ref" in probe_data["runtime_recommendation"]
+        assert "version_id" in probe_data["runtime_recommendation"]
+        assert "runtime_profile_id" in probe_data["runtime_recommendation"]
         assert probe_data["runtime_recommendation"]["python_version"] == "3.12"
         assert probe_data["runtime_recommendation"]["torch_profile"] in {"requirements", "cu124"}
 
@@ -47,9 +55,8 @@ def test_comfy_single_host_flow(sqlite_app):
                 "host_id": host["id"],
                 "name": "Comfy Prod",
                 "instance_slug": "comfy-prod",
-                "comfy_ref": "master",
-                "python_version": "3.12",
-                "torch_profile": "cu124",
+                "comfy_version_id": "comfyui-0.27.0-verified",
+                "runtime_profile_id": "nvidia-cu124-py312-torch260",
                 "comfy_port": 8188,
                 "model_root_ids": [model_root["id"]],
             },
@@ -58,6 +65,7 @@ def test_comfy_single_host_flow(sqlite_app):
         assert created.status_code == 201
         instance = created.json()["data"]
         assert instance["install_root"].endswith("/ComfyUI-Installs/comfy-prod")
+        assert instance["comfy_ref"] == "8b099de36acd81acd1afa3b5442951dc847e0a52"
         assert instance["python_version"] == "3.12"
         assert instance["torch_profile"] == "cu124"
         assert instance["model_root_ids"] == [model_root["id"]]
@@ -95,6 +103,109 @@ def test_create_instance_rejects_duplicate_slug(sqlite_app):
     assert first.status_code == 201
     assert second.status_code == 409
     assert second.json()["code"] == "INSTANCE_SLUG_CONFLICT"
+
+
+def test_create_instance_rejects_catalog_and_raw_field_mix(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        response = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Mixed",
+                "instance_slug": "mixed",
+                "comfy_version_id": "comfyui-0.27.0-verified",
+                "comfy_ref": "master",
+                "comfy_port": 8188,
+            },
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+    assert response.json()["details"]["field"] == "comfy_ref"
+
+
+def test_create_instance_rejects_unknown_catalog_id(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        response = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Unknown",
+                "instance_slug": "unknown",
+                "comfy_version_id": "missing-version",
+                "comfy_port": 8188,
+            },
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+    assert response.json()["details"]["field"] == "comfy_version_id"
+
+
+def test_create_instance_rejects_runtime_profile_and_raw_field_mix(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        response = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Runtime Mixed",
+                "instance_slug": "runtime-mixed",
+                "runtime_profile_id": "nvidia-cu124-py312-torch260",
+                "torch_profile": "cu124",
+                "comfy_port": 8188,
+            },
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+    assert response.json()["details"]["field"] == "runtime_profile_id"
+
+
+def test_create_instance_rejects_unknown_runtime_profile_id(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        response = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Unknown Runtime",
+                "instance_slug": "unknown-runtime",
+                "runtime_profile_id": "missing-runtime",
+                "comfy_port": 8188,
+            },
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUEST_INVALID"
+    assert response.json()["details"]["field"] == "runtime_profile_id"
+
+
+def test_create_instance_defaults_to_verified_catalog_version(sqlite_app):
+    with TestClient(sqlite_app) as client:
+        host = client.get("/v1/hosts", headers=auth_headers()).json()["data"]["hosts"][0]
+        response = client.post(
+            "/v1/instances",
+            json={
+                "host_id": host["id"],
+                "name": "Default",
+                "instance_slug": "default",
+                "comfy_port": 8188,
+            },
+            headers=auth_headers(),
+        )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["comfy_ref"] == "8b099de36acd81acd1afa3b5442951dc847e0a52"
+    assert data["python_version"] == "3.12"
+    assert data["torch_profile"] == "requirements"
 
 
 def test_create_host_rejects_ssh_in_p1(sqlite_app):

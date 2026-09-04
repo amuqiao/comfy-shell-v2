@@ -17,6 +17,12 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
+from comfyctl.catalog import (
+    recommendation as catalog_recommendation,
+    supported_torch_profiles,
+    torch_profile_backend,
+    torch_profile_packages,
+)
 from comfyctl.paths import ensure_data_dirs, ensure_instance_dirs, instance_paths
 
 
@@ -26,17 +32,7 @@ EXIT_EXTERNAL = 4
 EXIT_RUNTIME = 5
 
 TORCH_REQUIREMENT_NAMES = frozenset({"torch", "torchvision", "torchaudio"})
-TORCH_PROFILE_BACKENDS = {"cu124": "cu124"}
-TORCH_PROFILE_PACKAGES = {
-    "cu124": {
-        "torch": "torch==2.6.0+cu124",
-        "torchvision": "torchvision==0.21.0+cu124",
-        "torchaudio": "torchaudio==2.6.0+cu124",
-    }
-}
-SUPPORTED_CUDA_TORCH_PROFILES = frozenset(TORCH_PROFILE_BACKENDS)
-DEFAULT_RECOMMENDED_PYTHON = "3.12"
-DEFAULT_CU124_COMFY_REF = "8b099de36acd81acd1afa3b5442951dc847e0a52"
+SUPPORTED_TORCH_PROFILES = supported_torch_profiles()
 
 
 @dataclass(frozen=True)
@@ -95,23 +91,6 @@ def require_tool(name: str, *, layer: str = "python") -> str:
     return path
 
 
-def version_parts(value: str | None) -> tuple[int, ...]:
-    if value is None:
-        return ()
-    return tuple(int(part) for part in re.findall(r"\d+", value))
-
-
-def version_at_least(value: str | None, minimum: str) -> bool:
-    parts = version_parts(value)
-    minimum_parts = version_parts(minimum)
-    if not parts or not minimum_parts:
-        return False
-    length = max(len(parts), len(minimum_parts))
-    padded = parts + (0,) * (length - len(parts))
-    minimum_padded = minimum_parts + (0,) * (length - len(minimum_parts))
-    return padded >= minimum_padded
-
-
 def parse_nvidia_smi_cuda_version(value: str) -> str | None:
     match = re.search(r"CUDA Version:\s*([0-9]+(?:\.[0-9]+)?)", value)
     if match is None:
@@ -120,34 +99,7 @@ def parse_nvidia_smi_cuda_version(value: str) -> str | None:
 
 
 def runtime_recommendation(*, cuda_version: str | None, gpus: list[dict[str, str]]) -> dict[str, Any]:
-    warnings: list[str] = []
-    if gpus and version_at_least(cuda_version, "12.4"):
-        return {
-            "comfy_ref": DEFAULT_CU124_COMFY_REF,
-            "python_version": DEFAULT_RECOMMENDED_PYTHON,
-            "torch_profile": "cu124",
-            "gpu_ids": [gpus[0]["index"]],
-            "reason": f"Detected NVIDIA CUDA {cuda_version}; use the verified cu124 runtime and compatible ComfyUI ref.",
-            "warnings": warnings,
-        }
-    if gpus:
-        warnings.append("No supported CUDA torch profile matches this host; add a dedicated profile before GPU install.")
-        return {
-            "comfy_ref": "master",
-            "python_version": DEFAULT_RECOMMENDED_PYTHON,
-            "torch_profile": "requirements",
-            "gpu_ids": [gpus[0]["index"]],
-            "reason": f"Detected NVIDIA GPU but CUDA version is {cuda_version or 'unknown'}.",
-            "warnings": warnings,
-        }
-    return {
-        "comfy_ref": "master",
-        "python_version": DEFAULT_RECOMMENDED_PYTHON,
-        "torch_profile": "requirements",
-        "gpu_ids": [],
-        "reason": "No NVIDIA GPU was detected.",
-        "warnings": warnings,
-    }
+    return catalog_recommendation(cuda_version=cuda_version, gpus=gpus)
 
 
 def normalized_package_name(value: str) -> str:
@@ -181,7 +133,7 @@ def torch_requirements(source: Path, *, torch_profile: str | None = None) -> lis
         if requirements:
             return requirements
         return ["torch", "torchvision", "torchaudio"]
-    profile_packages = TORCH_PROFILE_PACKAGES[torch_profile]
+    profile_packages = torch_profile_packages(torch_profile)
     return [profile_packages[name] for name in ("torch", "torchvision", "torchaudio")]
 
 
@@ -437,8 +389,8 @@ def command_instance_install(args: argparse.Namespace) -> int:
     paths = ensure_instance_dirs(args.data_root, args.slug)
     require_tool("git", layer="git")
     require_tool("uv", layer="python")
-    if args.torch_profile not in {"requirements", *sorted(SUPPORTED_CUDA_TORCH_PROFILES)}:
-        supported = ", ".join(["requirements", *sorted(SUPPORTED_CUDA_TORCH_PROFILES)])
+    if args.torch_profile not in SUPPORTED_TORCH_PROFILES:
+        supported = ", ".join(sorted(SUPPORTED_TORCH_PROFILES))
         raise CommandFailure(EXIT_USAGE, "REQUEST_INVALID", f"torch_profile must be one of: {supported}", "config")
 
     if paths.lock.exists():
@@ -469,7 +421,14 @@ def command_instance_install(args: argparse.Namespace) -> int:
             if args.torch_profile == "requirements":
                 install_requirements = requirements
             else:
-                torch_backend = TORCH_PROFILE_BACKENDS[args.torch_profile]
+                torch_backend = torch_profile_backend(args.torch_profile)
+                if torch_backend is None:
+                    raise CommandFailure(
+                        EXIT_USAGE,
+                        "REQUEST_INVALID",
+                        f"torch_profile has no torch backend: {args.torch_profile}",
+                        "config",
+                    )
                 torch_packages = torch_requirements(requirements, torch_profile=args.torch_profile)
                 torch_install = run_command(
                     [

@@ -3,7 +3,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
-SUPPORTED_TORCH_PROFILES = frozenset({"requirements", "cu124"})
+from comfyctl.catalog import supported_torch_profiles
+
+SUPPORTED_TORCH_PROFILES = supported_torch_profiles()
 
 
 class ConfigSection(BaseModel):

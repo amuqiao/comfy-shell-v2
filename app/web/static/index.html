@@ -8,7 +8,7 @@
       :root {
         color-scheme: light;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f7f7f4;
+        background: #f6f6f2;
         color: #202124;
       }
 
@@ -29,13 +29,14 @@
       main {
         display: grid;
         gap: 18px;
-        grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+        grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
         padding: 18px 20px;
       }
 
       h1,
       h2,
-      h3 {
+      h3,
+      p {
         margin: 0;
       }
 
@@ -50,8 +51,12 @@
       }
 
       h3 {
-        font-size: 14px;
-        margin-bottom: 8px;
+        font-size: 13px;
+        margin-bottom: 6px;
+      }
+
+      a {
+        color: #006d77;
       }
 
       button,
@@ -59,8 +64,9 @@
       select {
         border: 1px solid #b8bbb0;
         border-radius: 6px;
+        box-sizing: border-box;
         font: inherit;
-        min-height: 34px;
+        min-height: 36px;
       }
 
       button {
@@ -72,7 +78,7 @@
 
       button:disabled {
         cursor: not-allowed;
-        opacity: 0.55;
+        opacity: 0.5;
       }
 
       button.secondary {
@@ -83,7 +89,6 @@
       input,
       select {
         background: #ffffff;
-        box-sizing: border-box;
         padding: 0 9px;
         width: 100%;
       }
@@ -102,6 +107,17 @@
         padding: 14px;
       }
 
+      details {
+        border-top: 1px solid #e1e2dc;
+        padding-top: 10px;
+      }
+
+      summary {
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 650;
+      }
+
       .stack {
         display: grid;
         gap: 12px;
@@ -112,6 +128,21 @@
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+      }
+
+      .toolbar input {
+        min-width: 240px;
+        width: 28vw;
+      }
+
+      .grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(4, minmax(140px, 1fr));
+      }
+
+      .grid.wide {
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
       }
 
       .list {
@@ -135,6 +166,17 @@
         font-size: 12px;
       }
 
+      .pill {
+        background: #edf3f1;
+        border: 1px solid #c9d8d3;
+        border-radius: 999px;
+        color: #24423c;
+        display: inline-flex;
+        font-size: 12px;
+        line-height: 1;
+        padding: 6px 8px;
+      }
+
       .kv {
         display: grid;
         gap: 6px;
@@ -143,11 +185,17 @@
       .kv div {
         display: grid;
         gap: 6px;
-        grid-template-columns: 92px minmax(0, 1fr);
+        grid-template-columns: 108px minmax(0, 1fr);
       }
 
       .kv span {
         overflow-wrap: anywhere;
+      }
+
+      .selected {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(0, 1fr) auto;
       }
 
       pre {
@@ -155,15 +203,39 @@
         border-radius: 8px;
         color: #f3f4ef;
         margin: 0;
-        min-height: 180px;
+        min-height: 220px;
         overflow: auto;
         padding: 12px;
         white-space: pre-wrap;
       }
 
+      @media (max-width: 980px) {
+        .grid,
+        .grid.wide {
+          grid-template-columns: repeat(2, minmax(140px, 1fr));
+        }
+      }
+
       @media (max-width: 760px) {
-        main {
+        header,
+        main,
+        .selected {
           grid-template-columns: 1fr;
+        }
+
+        header {
+          align-items: stretch;
+          display: grid;
+        }
+
+        main,
+        .grid,
+        .grid.wide {
+          grid-template-columns: 1fr;
+        }
+
+        .toolbar input {
+          width: 100%;
         }
       }
     </style>
@@ -171,7 +243,7 @@
   <body>
     <header>
       <h1>Comfy Shell</h1>
-      <div class="row">
+      <div class="row toolbar">
         <input id="token" type="password" placeholder="Bearer token" />
         <button id="refresh" type="button">Refresh</button>
       </div>
@@ -200,35 +272,53 @@
         <section>
           <h2>Instances</h2>
           <div class="stack">
-            <div class="row">
+            <div class="grid">
               <label>Name <input id="instance-name" value="Comfy Prod" /></label>
               <label>Slug <input id="instance-slug" value="comfy-prod" /></label>
-              <label>Ref <input id="instance-ref" placeholder="master or tag/commit" /></label>
-              <label>Python <input id="instance-python" placeholder="3.12" /></label>
               <label
-                >Torch
-                <select id="instance-torch">
-                  <option value="">default</option>
-                  <option value="cu124">cu124</option>
-                  <option value="requirements">requirements</option>
-                </select>
+                >Version
+                <select id="instance-version"></select>
+              </label>
+              <label
+                >Runtime
+                <select id="instance-runtime"></select>
               </label>
               <label>GPU <input id="instance-gpu" placeholder="0" /></label>
               <label>Port <input id="instance-port" type="number" value="8188" /></label>
             </div>
+            <details id="advanced-runtime">
+              <summary>Advanced exact values</summary>
+              <div class="stack" style="margin-top: 10px">
+                <label class="row" style="justify-content: flex-start">
+                  <input id="advanced-enabled" type="checkbox" style="min-height: 16px; width: auto" />
+                  Use exact ref/runtime
+                </label>
+                <div class="grid wide">
+                  <label>Ref <input id="instance-ref" placeholder="tag, branch, or commit" /></label>
+                  <label>Python <input id="instance-python" placeholder="3.12" /></label>
+                  <label
+                    >Torch
+                    <select id="instance-torch"></select>
+                  </label>
+                </div>
+              </div>
+            </details>
             <button id="create-instance" type="button">Create Instance</button>
             <div id="instances" class="list"></div>
           </div>
         </section>
         <section>
           <h2>Selected Instance</h2>
-          <div class="row">
-            <button id="install" type="button">Install</button>
-            <button id="start" type="button">Start</button>
-            <button id="stop" type="button">Stop</button>
-            <button id="status" class="secondary" type="button">Status</button>
-            <button id="ready" class="secondary" type="button">Ready</button>
-            <button id="logs" class="secondary" type="button">Logs</button>
+          <div class="selected">
+            <div id="selected-instance" class="kv muted"></div>
+            <div class="row">
+              <button id="install" type="button">Install</button>
+              <button id="start" type="button">Start</button>
+              <button id="stop" type="button">Stop</button>
+              <button id="status" class="secondary" type="button">Status</button>
+              <button id="ready" class="secondary" type="button">Ready</button>
+              <button id="logs" class="secondary" type="button">Logs</button>
+            </div>
           </div>
         </section>
         <section>
@@ -239,39 +329,70 @@
     </main>
     <script>
       const state = {
+        catalog: null,
         hosts: [],
         modelRoots: [],
         instances: [],
         hostProbes: {},
         selectedHostId: null,
         selectedInstanceId: null,
-        userEditedRef: false,
-        userEditedPython: false,
-        userEditedTorch: false,
+        userEditedVersion: false,
+        userEditedRuntime: false,
         userEditedGpu: false,
+        busy: false,
       };
       const apiPrefix = "__API_PREFIX__";
       const output = document.querySelector("#output");
       const modelPathInput = document.querySelector("#model-path");
       const createModelRootButton = document.querySelector("#create-model-root");
       const createInstanceButton = document.querySelector("#create-instance");
+      const advancedEnabled = document.querySelector("#advanced-enabled");
+      const instanceVersion = document.querySelector("#instance-version");
+      const instanceRuntime = document.querySelector("#instance-runtime");
       const instanceActions = ["install", "start", "stop", "status", "ready", "logs"].map((id) => document.querySelector(`#${id}`));
 
       function headers() {
-        const token = document.querySelector("#token").value;
-        return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+        const token = document.querySelector("#token").value.trim();
+        const values = { "Content-Type": "application/json" };
+        if (token) values.Authorization = `Bearer ${token}`;
+        return values;
       }
 
       function show(value) {
         output.textContent = JSON.stringify(value, null, 2);
       }
 
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function shortRef(ref) {
+        if (!ref) return "";
+        return /^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 12) : ref;
+      }
+
       async function request(path, options = {}, display = true) {
         const response = await fetch(`${apiPrefix}${path}`, { ...options, headers: headers() });
         const body = await response.json();
-        if (display) show(body);
+        if (display || !response.ok) show(body);
         if (!response.ok) throw new Error(body.code || response.statusText);
         return body.data;
+      }
+
+      async function withBusy(work) {
+        if (state.busy) return;
+        state.busy = true;
+        syncControls();
+        try {
+          await work();
+        } finally {
+          state.busy = false;
+          syncControls();
+        }
       }
 
       function selectedHost() {
@@ -290,6 +411,14 @@
         return selectedProbe()?.runtime_recommendation || null;
       }
 
+      function versionById(id) {
+        return state.catalog?.versions.find((item) => item.id === id) || null;
+      }
+
+      function runtimeById(id) {
+        return state.catalog?.runtime_profiles.find((item) => item.id === id) || null;
+      }
+
       function defaultModelRootPath(host) {
         if (!host) return "";
         return `${host.data_root.replace(/\/+$/, "")}/ComfyUI-Shared/models`;
@@ -299,35 +428,71 @@
         return state.modelRoots.some((root) => root.path === path);
       }
 
+      function optionText(item) {
+        const tags = [];
+        if (item.verified) tags.push("verified");
+        if (item.advanced) tags.push("advanced");
+        return `${item.label}${tags.length ? ` (${tags.join(", ")})` : ""}`;
+      }
+
+      function renderCatalogControls() {
+        const currentVersion = instanceVersion.value;
+        const currentRuntime = instanceRuntime.value;
+        const visibleVersions = (state.catalog?.versions || []).filter((item) => !item.advanced);
+        const visibleRuntimes = (state.catalog?.runtime_profiles || []).filter((item) => !item.advanced);
+        instanceVersion.innerHTML = visibleVersions
+          .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(optionText(item))}</option>`)
+          .join("");
+        instanceRuntime.innerHTML = visibleRuntimes
+          .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(optionText(item))}</option>`)
+          .join("");
+        const torchProfiles = [...new Set((state.catalog?.runtime_profiles || []).map((item) => item.torch_profile))];
+        document.querySelector("#instance-torch").innerHTML = torchProfiles
+          .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
+          .join("");
+        const versionIds = new Set(visibleVersions.map((item) => item.id));
+        const runtimeIds = new Set(visibleRuntimes.map((item) => item.id));
+        const visibleDefaultVersion = visibleVersions.find((item) => item.recommended) || visibleVersions[0] || null;
+        const visibleDefaultRuntime = visibleRuntimes.find((item) => item.recommended) || visibleRuntimes[0] || null;
+        instanceVersion.value = versionIds.has(currentVersion) ? currentVersion : visibleDefaultVersion?.id || "";
+        instanceRuntime.value = runtimeIds.has(currentRuntime) ? currentRuntime : visibleDefaultRuntime?.id || "";
+        syncAdvancedFields();
+      }
+
+      function syncAdvancedFields() {
+        if (advancedEnabled.checked) return;
+        const version = versionById(instanceVersion.value);
+        const runtime = runtimeById(instanceRuntime.value);
+        if (version) document.querySelector("#instance-ref").value = version.ref;
+        if (runtime) {
+          document.querySelector("#instance-python").value = runtime.python_version;
+          document.querySelector("#instance-torch").value = runtime.torch_profile;
+        }
+      }
+
       function applyRuntimeRecommendation() {
         const recommendation = selectedRecommendation();
         if (!recommendation) return;
-        const refInput = document.querySelector("#instance-ref");
-        const pythonInput = document.querySelector("#instance-python");
-        const torchSelect = document.querySelector("#instance-torch");
-        const gpuInput = document.querySelector("#instance-gpu");
-        if (!state.userEditedRef && recommendation.comfy_ref) {
-          refInput.value = recommendation.comfy_ref;
+        if (!state.userEditedVersion && recommendation.version_id) {
+          instanceVersion.value = recommendation.version_id;
         }
-        if (!state.userEditedPython && recommendation.python_version) {
-          pythonInput.value = recommendation.python_version;
-        }
-        if (!state.userEditedTorch && recommendation.torch_profile) {
-          torchSelect.value = recommendation.torch_profile;
+        if (!state.userEditedRuntime && recommendation.runtime_profile_id) {
+          instanceRuntime.value = recommendation.runtime_profile_id;
         }
         if (!state.userEditedGpu && Array.isArray(recommendation.gpu_ids)) {
-          gpuInput.value = recommendation.gpu_ids.join(",");
+          document.querySelector("#instance-gpu").value = recommendation.gpu_ids.join(",");
         }
+        syncAdvancedFields();
       }
 
       function syncControls() {
         const hasHost = Boolean(selectedHost());
         const hasInstance = Boolean(selectedInstance());
         const modelPath = modelPathInput.value || modelPathInput.placeholder;
-        createModelRootButton.disabled = !hasHost || !modelPath || modelRootPathRegistered(modelPath);
-        createInstanceButton.disabled = !hasHost;
+        createModelRootButton.disabled = state.busy || !hasHost || !modelPath || modelRootPathRegistered(modelPath);
+        createInstanceButton.disabled = state.busy || !hasHost || !instanceVersion.value || !instanceRuntime.value;
         instanceActions.forEach((button) => {
-          button.disabled = !hasInstance;
+          button.disabled = state.busy || !hasInstance;
         });
         modelPathInput.placeholder = hasHost ? defaultModelRootPath(selectedHost()) : "";
         if (hasHost && !modelPathInput.value) {
@@ -338,9 +503,9 @@
       function renderHosts() {
         document.querySelector("#hosts").innerHTML = state.hosts
           .map(
-            (host) => `<div class="item ${host.id === state.selectedHostId ? "active" : ""}" data-host="${host.id}">
-              <strong>${host.name}</strong>
-              <div class="muted">${host.connection} | ${host.data_root}</div>
+            (host) => `<div class="item ${host.id === state.selectedHostId ? "active" : ""}" data-host="${escapeHtml(host.id)}">
+              <strong>${escapeHtml(host.name)}</strong>
+              <div class="muted">${escapeHtml(host.connection)} | ${escapeHtml(host.data_root)}</div>
             </div>`,
           )
           .join("");
@@ -351,9 +516,8 @@
             state.selectedInstanceId = null;
             state.modelRoots = [];
             state.instances = [];
-            state.userEditedRef = false;
-            state.userEditedPython = false;
-            state.userEditedTorch = false;
+            state.userEditedVersion = false;
+            state.userEditedRuntime = false;
             state.userEditedGpu = false;
             modelPathInput.value = defaultModelRootPath(selectedHost());
             renderHosts();
@@ -375,22 +539,38 @@
         const warnings = Array.isArray(recommendation?.warnings) ? recommendation.warnings.join("; ") : "";
         document.querySelector("#runtime").innerHTML = host
           ? [
-              `<div><strong>Data Root</strong><span>${host.data_root}</span></div>`,
-              `<div><strong>Driver</strong><span>${probe?.driver_version || "unknown"}</span></div>`,
-              `<div><strong>CUDA</strong><span>${probe?.cuda_version || "unknown"}</span></div>`,
-              `<div><strong>GPU</strong><span>${gpus.map((gpu) => `${gpu.index}: ${gpu.name}`).join(", ") || "none"}</span></div>`,
-              `<div><strong>Recommend</strong><span>${recommendation ? `${recommendation.comfy_ref} / ${recommendation.python_version} / ${recommendation.torch_profile} / gpu ${gpuIds || "none"}` : "pending"}</span></div>`,
-              `<div><strong>Warning</strong><span>${warnings || "none"}</span></div>`,
-              `<div><strong>Error</strong><span>${probe?.nvidia_smi_error || "none"}</span></div>`,
+              `<div><strong>Data Root</strong><span>${escapeHtml(host.data_root)}</span></div>`,
+              `<div><strong>Driver</strong><span>${escapeHtml(probe?.driver_version || "unknown")}</span></div>`,
+              `<div><strong>CUDA</strong><span>${escapeHtml(probe?.cuda_version || "unknown")}</span></div>`,
+              `<div><strong>GPU</strong><span>${escapeHtml(gpus.map((gpu) => `${gpu.index}: ${gpu.name}`).join(", ") || "none")}</span></div>`,
+              `<div><strong>Version</strong><span>${escapeHtml(recommendation?.version_label || "pending")}</span></div>`,
+              `<div><strong>Runtime</strong><span>${escapeHtml(recommendation?.runtime_profile_label || "pending")}</span></div>`,
+              `<div><strong>GPU IDs</strong><span>${escapeHtml(gpuIds || "none")}</span></div>`,
+              `<div><strong>Reason</strong><span>${escapeHtml(recommendation?.reason || "pending")}</span></div>`,
+              `<div><strong>Warning</strong><span>${escapeHtml(warnings || "none")}</span></div>`,
+              `<div><strong>Error</strong><span>${escapeHtml(probe?.nvidia_smi_error || "none")}</span></div>`,
             ].join("")
           : "";
       }
 
       function renderModelRoots() {
         document.querySelector("#model-roots").innerHTML = state.modelRoots
-          .map((root) => `<div class="item"><strong>${root.label}</strong><div class="muted">${root.path}</div></div>`)
+          .map((root) => `<div class="item"><strong>${escapeHtml(root.label)}</strong><div class="muted">${escapeHtml(root.path)}</div></div>`)
           .join("");
         syncControls();
+      }
+
+      function renderSelectedInstance() {
+        const item = selectedInstance();
+        document.querySelector("#selected-instance").innerHTML = item
+          ? [
+              `<div><strong>Name</strong><span>${escapeHtml(item.name)}</span></div>`,
+              `<div><strong>Install</strong><span>${escapeHtml(item.install_root)}</span></div>`,
+              `<div><strong>Runtime</strong><span>${escapeHtml(item.python_version)} / ${escapeHtml(item.torch_profile)}</span></div>`,
+              `<div><strong>Comfy</strong><span>${escapeHtml(shortRef(item.comfy_ref))} | port ${escapeHtml(item.comfy_port)}</span></div>`,
+              `<div><strong>Open</strong><span><a href="http://127.0.0.1:${escapeHtml(item.comfy_port)}/" target="_blank" rel="noreferrer">http://127.0.0.1:${escapeHtml(item.comfy_port)}/</a></span></div>`,
+            ].join("")
+          : "";
       }
 
       function renderInstances() {
@@ -399,9 +579,13 @@
         }
         document.querySelector("#instances").innerHTML = state.instances
           .map(
-            (item) => `<div class="item ${item.id === state.selectedInstanceId ? "active" : ""}" data-instance="${item.id}">
-              <strong>${item.name}</strong>
-              <div class="muted">${item.comfy_ref} | port ${item.comfy_port} | ${item.install_root}</div>
+            (item) => `<div class="item ${item.id === state.selectedInstanceId ? "active" : ""}" data-instance="${escapeHtml(item.id)}">
+              <strong>${escapeHtml(item.name)}</strong>
+              <div class="muted">
+                <span class="pill">${escapeHtml(item.instance_slug)}</span>
+                ${escapeHtml(shortRef(item.comfy_ref))} | ${escapeHtml(item.python_version)} / ${escapeHtml(item.torch_profile)} | port ${escapeHtml(item.comfy_port)}
+              </div>
+              <div class="muted">${escapeHtml(item.install_root)}</div>
             </div>`,
           )
           .join("");
@@ -411,7 +595,13 @@
             renderInstances();
           });
         });
+        renderSelectedInstance();
         syncControls();
+      }
+
+      async function loadCatalog() {
+        state.catalog = await request("/catalog", {}, false);
+        renderCatalogControls();
       }
 
       async function loadHostResources(hostId) {
@@ -429,7 +619,7 @@
         state.hostProbes[hostId] = probe.data;
         applyRuntimeRecommendation();
         renderRuntime();
-        const roots = await request(`/model-roots?host_id=${hostParam}`);
+        const roots = await request(`/model-roots?host_id=${hostParam}`, {}, false);
         if (state.selectedHostId !== hostId) return;
         state.modelRoots = roots.model_roots;
         renderModelRoots();
@@ -440,65 +630,67 @@
       }
 
       async function refresh() {
-        const hosts = await request("/hosts");
-        state.hosts = hosts.hosts;
-        if (!selectedHost()) {
-          state.selectedHostId = state.hosts[0]?.id || null;
-          state.selectedInstanceId = null;
-          state.userEditedRef = false;
-          state.userEditedPython = false;
-          state.userEditedTorch = false;
-          state.userEditedGpu = false;
-        }
-        modelPathInput.value = defaultModelRootPath(selectedHost());
-        renderHosts();
-        renderRuntime();
-        await loadHostResources(state.selectedHostId);
+        await withBusy(async () => {
+          await loadCatalog();
+          const hosts = await request("/hosts", {}, false);
+          state.hosts = hosts.hosts;
+          if (!selectedHost()) {
+            state.selectedHostId = state.hosts[0]?.id || null;
+            state.selectedInstanceId = null;
+            state.userEditedVersion = false;
+            state.userEditedRuntime = false;
+            state.userEditedGpu = false;
+          }
+          modelPathInput.value = defaultModelRootPath(selectedHost());
+          renderHosts();
+          renderRuntime();
+          await loadHostResources(state.selectedHostId);
+        });
       }
 
       document.querySelector("#refresh").addEventListener("click", refresh);
       modelPathInput.addEventListener("input", syncControls);
-      document.querySelector("#instance-ref").addEventListener("input", () => {
-        state.userEditedRef = true;
+      instanceVersion.addEventListener("change", () => {
+        state.userEditedVersion = true;
+        syncAdvancedFields();
       });
-      document.querySelector("#instance-python").addEventListener("input", () => {
-        state.userEditedPython = true;
+      instanceRuntime.addEventListener("change", () => {
+        state.userEditedRuntime = true;
+        syncAdvancedFields();
       });
-      document.querySelector("#instance-torch").addEventListener("change", () => {
-        state.userEditedTorch = true;
+      advancedEnabled.addEventListener("change", () => {
+        if (!advancedEnabled.checked) syncAdvancedFields();
       });
       document.querySelector("#instance-gpu").addEventListener("input", () => {
         state.userEditedGpu = true;
       });
       document.querySelector("#create-model-root").addEventListener("click", async () => {
-        if (!selectedHost()) {
-          show({ code: "HOST_NOT_SELECTED", message: "Select a host first." });
-          return;
-        }
-        await request("/model-roots", {
-          method: "POST",
-          body: JSON.stringify({
-            host_id: state.selectedHostId,
-            label: document.querySelector("#model-label").value,
-            path: document.querySelector("#model-path").value,
-          }),
+        await withBusy(async () => {
+          if (!selectedHost()) {
+            show({ code: "HOST_NOT_SELECTED", message: "Select a host first." });
+            return;
+          }
+          await request("/model-roots", {
+            method: "POST",
+            body: JSON.stringify({
+              host_id: state.selectedHostId,
+              label: document.querySelector("#model-label").value,
+              path: document.querySelector("#model-path").value,
+            }),
+          });
+          await loadHostResources(state.selectedHostId);
         });
-        await loadHostResources(state.selectedHostId);
       });
       document.querySelector("#create-instance").addEventListener("click", async () => {
-        if (!selectedHost()) {
-          show({ code: "HOST_NOT_SELECTED", message: "Select a host first." });
-          return;
-        }
-        await request("/instances", {
-          method: "POST",
-          body: JSON.stringify({
+        await withBusy(async () => {
+          if (!selectedHost()) {
+            show({ code: "HOST_NOT_SELECTED", message: "Select a host first." });
+            return;
+          }
+          const payload = {
             host_id: state.selectedHostId,
             name: document.querySelector("#instance-name").value,
             instance_slug: document.querySelector("#instance-slug").value,
-            comfy_ref: document.querySelector("#instance-ref").value || null,
-            python_version: document.querySelector("#instance-python").value || null,
-            torch_profile: document.querySelector("#instance-torch").value || null,
             comfy_port: Number(document.querySelector("#instance-port").value),
             gpu_ids: document
               .querySelector("#instance-gpu")
@@ -506,29 +698,46 @@
               .map((item) => item.trim())
               .filter(Boolean),
             model_root_ids: state.modelRoots.map((item) => item.id),
-          }),
+          };
+          if (advancedEnabled.checked) {
+            payload.comfy_ref = document.querySelector("#instance-ref").value || null;
+            payload.python_version = document.querySelector("#instance-python").value || null;
+            payload.torch_profile = document.querySelector("#instance-torch").value || null;
+          } else {
+            payload.comfy_version_id = instanceVersion.value;
+            payload.runtime_profile_id = instanceRuntime.value;
+          }
+          await request("/instances", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          await loadHostResources(state.selectedHostId);
         });
-        await loadHostResources(state.selectedHostId);
       });
       for (const action of ["install", "start", "stop"]) {
         document.querySelector(`#${action}`).addEventListener("click", async () => {
-          if (!selectedInstance()) {
-            show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
-            return;
-          }
-          await request(`/instances/${state.selectedInstanceId}/${action}`, { method: "POST", body: JSON.stringify({}) });
-          await loadHostResources(state.selectedHostId);
+          await withBusy(async () => {
+            if (!selectedInstance()) {
+              show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
+              return;
+            }
+            await request(`/instances/${state.selectedInstanceId}/${action}`, { method: "POST", body: JSON.stringify({}) });
+            await loadHostResources(state.selectedHostId);
+          });
         });
       }
       for (const action of ["status", "ready", "logs"]) {
         document.querySelector(`#${action}`).addEventListener("click", async () => {
-          if (!selectedInstance()) {
-            show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
-            return;
-          }
-          await request(`/instances/${state.selectedInstanceId}/${action}`);
+          await withBusy(async () => {
+            if (!selectedInstance()) {
+              show({ code: "INSTANCE_NOT_SELECTED", message: "Select an instance first." });
+              return;
+            }
+            await request(`/instances/${state.selectedInstanceId}/${action}`);
+          });
         });
       }
+      renderCatalogControls();
       syncControls();
     </script>
   </body>

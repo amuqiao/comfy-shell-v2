@@ -50,6 +50,57 @@ class ProbeResponse(StrictBaseModel):
     data: dict[str, Any]
 
 
+class CatalogGithubResponse(StrictBaseModel):
+    repo: str
+    url: str
+    default_branch: str
+
+
+class ComfyVersionOptionResponse(StrictBaseModel):
+    id: str
+    label: str
+    display_version: str | None = None
+    channel: str
+    ref: str
+    recommended: bool = False
+    verified: bool = False
+    advanced: bool = False
+    description: str | None = None
+
+
+class RuntimeProfileOptionResponse(StrictBaseModel):
+    id: str
+    label: str
+    python_version: str
+    torch_profile: str
+    backend: str | None = None
+    gpu_vendor: str | None = None
+    recommended: bool = False
+    verified: bool = False
+    advanced: bool = False
+    min_cuda: str | None = None
+    packages: dict[str, str] = Field(default_factory=dict)
+    description: str | None = None
+
+
+class RecommendationRuleResponse(StrictBaseModel):
+    id: str
+    when: dict[str, Any]
+    version_id: str
+    runtime_profile_id: str
+    gpu: str
+    reason: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ComfyCatalogResponse(StrictBaseModel):
+    schema_version: int
+    github: CatalogGithubResponse
+    versions: list[ComfyVersionOptionResponse]
+    runtime_profiles: list[RuntimeProfileOptionResponse]
+    recommendation_rules: list[RecommendationRuleResponse]
+
+
 class ModelRootCreateRequest(StrictBaseModel):
     host_id: str
     label: str = Field(min_length=1, max_length=120)
@@ -88,6 +139,8 @@ class InstanceCreateRequest(StrictBaseModel):
     host_id: str
     name: str = Field(min_length=1, max_length=120)
     instance_slug: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
+    comfy_version_id: str | None = Field(default=None, max_length=120)
+    runtime_profile_id: str | None = Field(default=None, max_length=120)
     comfy_ref: str | None = Field(default=None, max_length=255)
     python_version: str | None = Field(default=None, max_length=32)
     torch_profile: str | None = Field(default=None, max_length=64)

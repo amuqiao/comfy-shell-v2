@@ -22,6 +22,7 @@ def test_operation_registry_contains_foundation_routes():
 
     assert "/health" in paths
     assert "/ready" in paths
+    assert "/v1/catalog" in paths
     assert "/v1/hosts" in paths
     assert "/v1/instances" in paths
     assert all(item.response_schema for item in operation_registry.all())
